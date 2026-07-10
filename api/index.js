@@ -187,7 +187,7 @@ app.post("/api/pi/sell", async (req, res) => {
       console.log(`[Pi Backend] Using Network Passphrase: "${passphrase}"`);
       
       // Load and sign transaction
-      const tx = TransactionBuilder.fromEnvelope(txEnvelope, { networkPassphrase: passphrase });
+      const tx = TransactionBuilder.fromXDR(txEnvelope, passphrase);
       const keypair = Keypair.fromSecret(walletSeed);
       tx.sign(keypair);
       
