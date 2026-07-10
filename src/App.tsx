@@ -2831,15 +2831,15 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-brand-bg text-slate-800 font-sans flex flex-col items-center justify-center p-4 relative overflow-hidden select-none geometric-grid">
+    <div className="h-[100dvh] w-full bg-brand-bg text-slate-800 font-sans flex flex-col items-center justify-center p-0 md:p-4 relative overflow-hidden select-none geometric-grid">
       {/* Absolute Aesthetic Background Glow Elements */}
       <div className="absolute top-1/4 left-1/4 w-80 h-80 rounded-full bg-brand-accent/5 blur-3xl pointer-events-none pulse-grid"></div>
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-indigo-500/5 blur-3xl pointer-events-none pulse-grid"></div>
 
-      {/* Main Container constrained to 9:16 optimized viewport */}
+      {/* Main Container constrained to 9:16 optimized viewport on desktop, full screen on mobile */}
       <div
         ref={containerRef}
-        className="w-full max-w-[440px] h-[80vh] md:h-[84vh] aspect-[9/16] bg-brand-card rounded-2xl border-2 border-brand-border shadow-2xl flex flex-col relative overflow-hidden"
+        className="w-full h-full md:h-[84vh] md:max-w-[440px] md:aspect-[9/16] bg-brand-card rounded-none md:rounded-2xl border-0 md:border-2 border-brand-border shadow-none md:shadow-2xl flex flex-col relative overflow-hidden"
       >
         {/* Geometric Calibration Crosshairs on Corners */}
         <div className="absolute top-2.5 left-2.5 text-[10px] font-mono text-brand-muted/20 pointer-events-none select-none">+</div>

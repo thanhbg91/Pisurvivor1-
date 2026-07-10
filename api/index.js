@@ -52,7 +52,16 @@ async function callPiApi(endpoint, method, body) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Pi API returned status ${response.status}: ${errorText}`);
+    let errorObj = null;
+    try {
+      errorObj = JSON.parse(errorText);
+    } catch (e) {
+      // Not JSON
+    }
+    const err = new Error(`Pi API returned status ${response.status}: ${errorText}`);
+    err.status = response.status;
+    err.body = errorObj || errorText;
+    throw err;
   }
 
   return response.json();
@@ -167,21 +176,34 @@ app.post("/api/pi/sell", async (req, res) => {
 
     // Try to perform a real App-to-User payment on Pi Platform API
     try {
-      console.log(`[Pi Backend] Requesting Pi Platform to create App-to-User payment...`);
-      const paymentResponse = await callPiApi("/v2/payments", "POST", {
-        payment: {
-          amount: Number(piAmount),
-          memo: `Thanh toan doi ${amountCoins} Xu sang Pi cho Pioneer ${username || uid}`,
-          metadata: { type: "sell_xu", xuAmount: amountCoins },
-          uid: uid
+      let paymentResponse;
+      try {
+        console.log(`[Pi Backend] Requesting Pi Platform to create App-to-User payment...`);
+        paymentResponse = await callPiApi("/v2/payments", "POST", {
+          payment: {
+            amount: Number(piAmount),
+            memo: `Thanh toan doi ${amountCoins} Xu sang Pi cho Pioneer ${username || uid}`,
+            metadata: { type: "sell_xu", xuAmount: amountCoins },
+            uid: uid
+          }
+        });
+        console.log(`[Pi Backend] App-to-User payment created on Pi API:`, paymentResponse);
+      } catch (apiError) {
+        if (apiError.status === 400 && apiError.body && apiError.body.error === "ongoing_payment_found" && apiError.body.payment) {
+          console.log(`[Pi Backend] Ongoing payment found! Attempting to complete the existing ongoing payment instead...`);
+          paymentResponse = apiError.body.payment;
+        } else {
+          throw apiError;
         }
-      });
-
-      console.log(`[Pi Backend] App-to-User payment created on Pi API:`, paymentResponse);
+      }
 
       console.log(`[Pi Backend] PI_WALLET_SEED is configured. Proceeding with real blockchain signing of App-to-User payout...`);
       const paymentId = paymentResponse.id;
       const txEnvelope = paymentResponse.network_tx_envelope;
+      
+      if (!txEnvelope) {
+        throw new Error("Không tìm thấy network_tx_envelope của giao dịch.");
+      }
       
       const passphrase = process.env.VITE_PI_SANDBOX !== "false" ? "Pi Testnet" : "Pi Network";
       console.log(`[Pi Backend] Using Network Passphrase: "${passphrase}"`);
@@ -195,8 +217,13 @@ app.post("/api/pi/sell", async (req, res) => {
       console.log(`[Pi Backend] Transaction signed. TXID: ${txid}. Submitting to Pi Network Platform...`);
       
       // Submit A2U payment
-      const submitResponse = await callPiApi(`/v2/payments/${paymentId}/submit`, "POST", { txid });
-      console.log(`[Pi Backend] Payment submitted successfully. Response:`, submitResponse);
+      let submitResponse;
+      try {
+        submitResponse = await callPiApi(`/v2/payments/${paymentId}/submit`, "POST", { txid });
+        console.log(`[Pi Backend] Payment submitted successfully. Response:`, submitResponse);
+      } catch (submitErr) {
+        console.warn(`[Pi Backend] Submit step warning or error (payment may already be submitted):`, submitErr.message);
+      }
       
       // Complete A2U payment
       console.log(`[Pi Backend] Completing payment acknowledgement...`);
