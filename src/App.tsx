@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Language, TranslationSet, translations, languages } from "./translations";
 import {
   Play, Flame, Shield, Activity, Sparkles, RotateCcw, Heart, Zap,
   Volume2, VolumeX, Trophy, Coins, Skull, Star, HelpCircle, ArrowRight
@@ -90,6 +91,35 @@ export default function App() {
   // ==========================================
   // REACT STATE (UI, Overlays, Persistent Upgrades)
   // ==========================================
+  const [language, setLanguage] = useState<Language>(() => {
+    const saved = localStorage.getItem("pioneer_language") as Language;
+    if (saved && ["en", "vi", "zh", "es", "ko", "ja"].includes(saved)) {
+      return saved;
+    }
+    if (typeof navigator !== "undefined") {
+      const code = navigator.language.split("-")[0];
+      if (["en", "vi", "zh", "es", "ko", "ja"].includes(code)) {
+        return code as Language;
+      }
+    }
+    return "en";
+  });
+
+  const changeLanguage = (lang: Language) => {
+    setLanguage(lang);
+    localStorage.setItem("pioneer_language", lang);
+  };
+
+  const t = (key: keyof TranslationSet, replaces?: Record<string, string | number>) => {
+    let text = translations[language][key] || translations["en"][key] || "";
+    if (replaces) {
+      Object.entries(replaces).forEach(([k, v]) => {
+        text = text.replace(`{${k}}`, String(v));
+      });
+    }
+    return text;
+  };
+
   const [gameState, setGameState] = useState<"START" | "PLAYING" | "GAMEOVER">("START");
   const [isLevelUp, setIsLevelUp] = useState(false);
   const [levelUpOptions, setLevelUpOptions] = useState<UpgradeOption[]>([]);
@@ -1104,7 +1134,7 @@ export default function App() {
         Pi.createPayment(
           {
             amount: piAmount,
-            memo: `Pioneer Upgrade: ${key === "damage" ? "Plasma Accelerators" : key === "health" ? "Nanoshield Armor" : key === "speed" ? "Reactor Thrusters" : key === "magnet" ? "Quantum Harvester" : "Nanite Repair Systems"} (Level ${shopUpgrades[key] + 1})`,
+            memo: `Pioneer Upgrade: ${key === "damage" ? t("plasmaAccelerators") : key === "health" ? t("nanoshieldArmor") : key === "speed" ? t("reactorThrusters") : key === "magnet" ? t("quantumHarvester") : t("naniteRepairSystems")} (${t("hudLevel")} ${shopUpgrades[key] + 1})`,
             metadata: { upgradeKey: key, targetLevel: shopUpgrades[key] + 1 },
           },
           {
@@ -1123,7 +1153,7 @@ export default function App() {
                   if (contentType && contentType.includes("application/json")) {
                     return res.json();
                   }
-                  throw new Error("Không thể kết nối Backend Server (Nhận phản hồi HTML thay vì JSON). Bạn có đang chạy trên Vercel không? Hãy đổi sang chế độ '¢ Credits' ở trên để nâng cấp.");
+                  throw new Error(t("apiErrorNoHtml"));
                 })
                 .then((data) => {
                   console.log("[Pi SDK] Server approved payment successfully:", data);
@@ -1131,7 +1161,7 @@ export default function App() {
                 .catch((err: any) => {
                   console.warn("[Pi SDK] Server approval failed:", err);
                   setPiPaymentStatus("error");
-                  setPiPaymentError(err?.message || "Failed to approve payment with the server.");
+                  setPiPaymentError(err?.message || t("checkoutProtocolError"));
                 });
             },
             onReadyForServerCompletion: (paymentId: string, txid: string) => {
@@ -1149,7 +1179,7 @@ export default function App() {
                   if (contentType && contentType.includes("application/json")) {
                     return res.json();
                   }
-                  throw new Error("Không thể kết nối Backend Server (Nhận phản hồi HTML thay vì JSON).");
+                  throw new Error(t("apiErrorGeneric"));
                 })
                 .then((data) => {
                   console.log("[Pi SDK] Server completed payment successfully:", data);
@@ -1170,7 +1200,7 @@ export default function App() {
                 .catch((err) => {
                   console.warn("[Pi SDK] Server completion failed:", err);
                   setPiPaymentStatus("error");
-                  setPiPaymentError("Blockchain transaction was made but backend completion failed.");
+                  setPiPaymentError(t("processSellError"));
                 });
             },
             onCancel: (paymentId: string) => {
@@ -1181,7 +1211,7 @@ export default function App() {
             onError: (error: Error, payment: any) => {
               console.warn("[Pi SDK] Payment error:", error, payment);
               setPiPaymentStatus("error");
-              setPiPaymentError(error.message || "An unexpected error occurred during checkout.");
+              setPiPaymentError(error.message || t("checkoutProtocolError"));
               setTimeout(() => setPiPaymentStatus("idle"), 4000);
             }
           }
@@ -1189,7 +1219,7 @@ export default function App() {
       } catch (err: any) {
         console.warn("[Pi SDK] Error launching payment flow:", err);
         setPiPaymentStatus("error");
-        setPiPaymentError(err.message || "Could not launch Pi payment interface.");
+        setPiPaymentError(err.message || t("checkoutProtocolError"));
         setTimeout(() => setPiPaymentStatus("idle"), 3000);
       }
     } else {
@@ -1223,7 +1253,7 @@ export default function App() {
         Pi.createPayment(
           {
             amount: piAmount,
-            memo: `Mua ${amountCoins} Xu (Base Engineering Credits) trong game Pioneer`,
+            memo: language === "vi" ? `Mua ${amountCoins} Xu (Thẻ kỹ thuật cơ sở) trong game Pioneer` : `Buy ${amountCoins} Coins (Base Engineering Credits) inside Pioneer`,
             metadata: { type: "buy_xu", amountCoins },
           },
           {
@@ -1242,7 +1272,7 @@ export default function App() {
                   if (contentType && contentType.includes("application/json")) {
                     return res.json();
                   }
-                  throw new Error("Không thể kết nối Backend Server (Nhận phản hồi HTML thay vì JSON).");
+                  throw new Error(t("apiErrorGeneric"));
                 })
                 .then((data) => {
                   console.log("[Pi SDK] Server approved Buy Xu payment successfully:", data);
@@ -1250,7 +1280,7 @@ export default function App() {
                 .catch((err: any) => {
                   console.warn("[Pi SDK] Server approval for Buy Xu failed:", err);
                   setPiPaymentStatus("error");
-                  setPiPaymentError(err?.message || "Phê duyệt thanh toán từ Server thất bại.");
+                  setPiPaymentError(err?.message || t("checkoutProtocolError"));
                 });
             },
             onReadyForServerCompletion: (paymentId: string, txid: string) => {
@@ -1268,7 +1298,7 @@ export default function App() {
                   if (contentType && contentType.includes("application/json")) {
                     return res.json();
                   }
-                  throw new Error("Không thể kết nối Backend Server (Nhận phản hồi HTML thay vì JSON).");
+                  throw new Error(t("apiErrorGeneric"));
                 })
                 .then((data) => {
                   console.log("[Pi SDK] Server completed Buy Xu payment successfully:", data);
@@ -1288,7 +1318,7 @@ export default function App() {
                 .catch((err) => {
                   console.warn("[Pi SDK] Server completion for Buy Xu failed:", err);
                   setPiPaymentStatus("error");
-                  setPiPaymentError("Hoàn thành thanh toán từ Server thất bại.");
+                  setPiPaymentError(t("checkoutProtocolError"));
                 });
             },
             onCancel: (paymentId: string) => {
@@ -1299,7 +1329,7 @@ export default function App() {
             onError: (error: Error, payment?: any) => {
               console.error("[Pi SDK] Buy Xu payment error:", error, payment);
               setPiPaymentStatus("error");
-              setPiPaymentError(error?.message || "Lỗi giao dịch.");
+              setPiPaymentError(error?.message || t("checkoutProtocolError"));
               setTimeout(() => setPiPaymentStatus("idle"), 4000);
             }
           }
@@ -1307,7 +1337,7 @@ export default function App() {
       } catch (err: any) {
         console.warn("[Pi SDK] Failed to buy xu:", err);
         setPiPaymentStatus("error");
-        setPiPaymentError(err?.message || "Lỗi khởi tạo giao dịch.");
+        setPiPaymentError(err?.message || t("checkoutProtocolError"));
         setTimeout(() => setPiPaymentStatus("idle"), 3000);
       }
     } else {
@@ -1327,12 +1357,12 @@ export default function App() {
 
   const sellCoinsForPi = async (amountCoins: number, piAmount: number) => {
     if (metaGold < amountCoins) {
-      setPiPaymentError(`Bạn không đủ xu để bán (Cần tối thiểu ${amountCoins} xu)`);
+      setPiPaymentError(t("notEnoughCoinsToSell", { amount: amountCoins }));
       return;
     }
 
     if (!piUser) {
-      setPiPaymentError("Vui lòng đăng nhập ví Pi trước khi bán xu.");
+      setPiPaymentError(t("loginPiWalletToSell"));
       return;
     }
 
@@ -1357,12 +1387,12 @@ export default function App() {
       const isJson = contentType && contentType.includes("application/json");
 
       if (!res.ok) {
-        let errorMsg = "Giao dịch bán xu bị từ chối từ Server.";
+        let errorMsg = t("sellRejected");
         if (isJson) {
           const errorData = await res.json();
           errorMsg = errorData.error || errorMsg;
         } else {
-          errorMsg = "Không thể kết nối Backend Server (Nhận phản hồi HTML thay vì JSON). Vui lòng cấu hình Backend Server.";
+          errorMsg = t("apiErrorGeneric");
         }
         throw new Error(errorMsg);
       }
@@ -1382,13 +1412,13 @@ export default function App() {
         
         if (data.simulated) {
           setPiPaymentStatus("success");
-          setPiPaymentError(`[MÔ PHỎNG] ${piAmount} π (Chưa cấu hình PI_WALLET_SEED trên Server)`);
+          setPiPaymentError(t("simulateNoWalletSeed", { amount: piAmount }));
         } else {
           setPiPaymentStatus("success");
           setPiPaymentError(`${piAmount} π`);
         }
       } else {
-        throw new Error("Phản hồi không hợp lệ từ máy chủ.");
+        throw new Error(t("invalidServerResponse"));
       }
 
       setTimeout(() => {
@@ -1398,13 +1428,19 @@ export default function App() {
     } catch (err: any) {
       console.warn("[Pi SDK] Failed to sell xu:", err);
       setPiPaymentStatus("error");
-      setPiPaymentError(err?.message || "Lỗi khi xử lý giao dịch bán xu.");
+      setPiPaymentError(err?.message || t("processSellError"));
       setTimeout(() => setPiPaymentStatus("idle"), 4000);
     }
   };
 
   const resetSaveData = () => {
-    if (confirm("Are you sure you want to reset all permanent stats, high scores, and gold?")) {
+    const msg = language === "vi" ? "Bạn có chắc chắn muốn xóa toàn bộ chỉ số vĩnh viễn, kỷ lục và xu không?"
+              : language === "zh" ? "您确定要清除所有永久属性、最高记录和金币吗？"
+              : language === "es" ? "¿Está seguro de que desea restablecer todas las estadísticas permanentes, récords y monedas?"
+              : language === "ko" ? "모든 영구 능력치, 최고 기록 및 골드를 초기화하시겠습니까?"
+              : language === "ja" ? "すべての恒久ステータス、ハイスコア、ゴールドをリセットしてもよろしいですか？"
+              : "Are you sure you want to reset all permanent stats, high scores, and gold?";
+    if (confirm(msg)) {
       localStorage.clear();
       setMetaGold(0);
       setShopUpgrades({ damage: 0, health: 0, speed: 0, magnet: 0, regen: 0 });
@@ -2383,7 +2419,7 @@ export default function App() {
         <div className="absolute bottom-2.5 right-2.5 text-[10px] font-mono text-brand-muted/20 pointer-events-none select-none">+</div>
 
         {/* ==========================================
-            AUDIO & PERFORMANCES HUD
+            AUDIO & PERFORMANCES HUD & LANGUAGE SELECTOR
             ========================================== */}
         <button
           onClick={toggleMute}
@@ -2391,6 +2427,21 @@ export default function App() {
         >
           {isMuted ? <VolumeX className="w-4 h-4 text-rose-500" /> : <Volume2 className="w-4 h-4 text-brand-accent" />}
         </button>
+
+        {/* Language Selection Dropdown */}
+        <div className="absolute top-4 right-4 z-40">
+          <select
+            value={language}
+            onChange={(e) => changeLanguage(e.target.value as Language)}
+            className="appearance-none bg-brand-card border border-brand-border hover:border-brand-accent/40 rounded-lg px-2.5 py-1.5 text-[10px] font-bold font-mono text-slate-700 cursor-pointer transition geo-shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-accent"
+          >
+            {languages.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.flag} {lang.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* ==========================================
             1. START SCREEN LAYOUT
@@ -2401,10 +2452,10 @@ export default function App() {
             <div className="text-center mt-6">
               <div className="flex items-center justify-center space-x-1.5 text-brand-accent font-bold tracking-widest text-[9px] uppercase mb-1 font-mono">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Casu-Roguelike Survival // V1.4</span>
+                <span>{t("appSubtitle")}</span>
               </div>
               <h1 className="text-4xl font-extrabold tracking-tighter text-slate-800 font-display uppercase leading-none">
-                PIONEER
+                {t("appTitle")}
               </h1>
               <h2 className="text-sm font-semibold tracking-[0.3em] text-brand-accent font-mono mt-0.5 uppercase">
                 SURVIVORS
@@ -2434,7 +2485,7 @@ export default function App() {
                 </div>
               </div>
               <div className="mt-3.5 text-[9px] font-mono text-brand-muted uppercase tracking-widest">
-                Unit Core Status: Calibrated
+                {t("unitStatusCalibrated")}
               </div>
             </div>
 
@@ -2445,7 +2496,7 @@ export default function App() {
                 className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/20 text-white font-bold rounded-xl flex items-center justify-center space-x-2 transition cursor-pointer geo-shadow-indigo active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
               >
                 <Play className="w-4 h-4 fill-current text-white" />
-                <span className="font-display uppercase tracking-wider text-xs">Launch Pioneer Core</span>
+                <span className="font-display uppercase tracking-wider text-xs">{t("launchButton")}</span>
               </button>
 
               <button
@@ -2453,7 +2504,7 @@ export default function App() {
                 className="w-full py-2.5 bg-brand-card border border-brand-border hover:bg-slate-50 text-slate-700 font-bold rounded-lg cursor-pointer flex items-center justify-center space-x-2 transition text-xs geo-shadow-sm"
               >
                 <HelpCircle className="w-4 h-4 text-brand-accent" />
-                <span className="font-display uppercase tracking-widest text-[10px]">Survival Protocols</span>
+                <span className="font-display uppercase tracking-widest text-[10px]">{t("survivalProtocols")}</span>
               </button>
             </div>
 
@@ -2462,7 +2513,7 @@ export default function App() {
               <div className="flex items-center justify-between border-b border-brand-border pb-2.5 mb-2.5">
                 <div className="flex items-center space-x-2">
                   <Coins className="w-4 h-4 text-brand-accent" />
-                  <span className="font-display font-bold text-xs uppercase tracking-wider text-slate-700">Base Engineering Shop</span>
+                  <span className="font-display font-bold text-xs uppercase tracking-wider text-slate-700">{t("baseShopTitle")}</span>
                 </div>
                 <div className="bg-amber-500/10 border border-brand-accent/25 px-2.5 py-0.5 rounded text-xs text-brand-accent font-mono font-bold">
                   {metaGold} ¢
@@ -2475,7 +2526,7 @@ export default function App() {
                   <div className="flex items-center justify-between text-[10px]">
                     <div className="flex items-center space-x-1 font-mono text-purple-700 font-bold">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span>Pi Network Connected</span>
+                      <span>{t("piConnected")}</span>
                     </div>
                     {piUser ? (
                       <span className="text-purple-600 font-bold">@{piUser.username}</span>
@@ -2485,20 +2536,20 @@ export default function App() {
                         disabled={piPaymentStatus === "authenticating"}
                         className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded cursor-pointer transition duration-150 shadow-sm"
                       >
-                        {piPaymentStatus === "authenticating" ? "Signing In..." : "Sign In"}
+                        {piPaymentStatus === "authenticating" ? t("signingIn") : t("signIn")}
                       </button>
                     )}
                   </div>
 
                   {piPaymentError && !piUser && (
                     <div className="text-[9px] text-rose-500 font-mono mt-1 leading-normal border-t border-purple-100/50 pt-1">
-                      ⚠️ Lỗi: {piPaymentError}
+                      ⚠️ {t("errorPrefix")}{piPaymentError}
                     </div>
                   )}
                   
                   {/* Mode switcher toggle */}
                   <div className="flex items-center justify-between bg-white p-1 rounded border border-purple-200/50">
-                    <span className="text-[9px] text-slate-600 font-medium pl-1">Payment Protocol:</span>
+                    <span className="text-[9px] text-slate-600 font-medium pl-1">{t("paymentProtocol")}</span>
                     <button
                       onClick={() => setPayWithPiMode(!payWithPiMode)}
                       className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase tracking-wider font-bold transition duration-200 cursor-pointer ${
@@ -2507,13 +2558,13 @@ export default function App() {
                           : "bg-slate-100 text-slate-500"
                       }`}
                     >
-                      {payWithPiMode ? "π Testnet (Pi)" : "¢ Credits (Local)"}
+                      {payWithPiMode ? t("piTestnet") : t("creditsLocal")}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="mb-3 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center text-[8px] font-mono text-slate-500 uppercase tracking-wider">
-                  Open inside Pi Browser to enable π payments
+                  {t("openInsidePiBrowser")}
                 </div>
               )}
 
@@ -2522,7 +2573,7 @@ export default function App() {
                 <div className="flex items-center justify-between text-slate-600 font-medium">
                   <span className="flex items-center space-x-1">
                     <Shield className="w-3 h-3 text-brand-accent" />
-                    <span>Pi API Key (Backend):</span>
+                    <span>{t("apiKeyStatus")}</span>
                   </span>
                   <span className={`font-bold font-mono px-1.5 py-0.5 rounded text-[8px] uppercase ${
                     piApiKeyConfigured === true
@@ -2531,12 +2582,12 @@ export default function App() {
                       ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
                       : "bg-slate-100 text-slate-500"
                   }`}>
-                    {piApiKeyConfigured === true ? "Connected" : piApiKeyConfigured === false ? "Not Configured" : "Checking..."}
+                    {piApiKeyConfigured === true ? t("apiKeyConfigured") : piApiKeyConfigured === false ? t("apiKeyNotConfigured") : t("apiKeyChecking")}
                   </span>
                 </div>
                 {piApiKeyConfigured === false && (
                   <p className="text-[9px] text-rose-500 leading-normal font-medium bg-rose-50/50 p-1 rounded border border-rose-100">
-                    Vui lòng mở <strong>Settings</strong> trong AI Studio (hoặc cấu hình <strong>Environment Variables</strong> trên <strong>Vercel Dashboard</strong> nếu bạn đã deploy) để thiết lập khóa <strong>PI_API_KEY</strong>. Giao dịch Pi sẽ lỗi nếu thiếu khóa này.
+                    {t("apiKeyWarning")}
                   </p>
                 )}
               </div>
@@ -2552,7 +2603,7 @@ export default function App() {
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  Systems Upgrades
+                  {t("systemsUpgrades")}
                 </button>
                 <button
                   type="button"
@@ -2563,7 +2614,7 @@ export default function App() {
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  Pi Exchange (Buy/Sell)
+                  {t("piExchange")}
                 </button>
               </div>
 
@@ -2571,11 +2622,11 @@ export default function App() {
                 /* Individual Shop Upgrade Slots */
                 <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
                   {[
-                    { key: "damage", label: "Plasma Accelerators", icon: <Zap className="w-3.5 h-3.5" />, cost: (shopUpgrades.damage + 1) * 20, desc: "+15% Damage scaling" },
-                    { key: "health", label: "Nanoshield Armor", icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.health + 1) * 15, desc: "+15 Base Max HP" },
-                    { key: "speed", label: "Reactor Thrusters", icon: <Activity className="w-3.5 h-3.5" />, cost: (shopUpgrades.speed + 1) * 20, desc: "+10% Move speed" },
-                    { key: "magnet", label: "Quantum Harvester", icon: <Sparkles className="w-3.5 h-3.5" />, cost: (shopUpgrades.magnet + 1) * 15, desc: "+25px Attraction radius" },
-                    { key: "regen", label: "Nanite Repair Systems", icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.regen + 1) * 25, desc: "+0.35 HP Regen/sec" },
+                    { key: "damage", label: t("plasmaAccelerators"), icon: <Zap className="w-3.5 h-3.5" />, cost: (shopUpgrades.damage + 1) * 20, desc: t("plasmaAcceleratorsDesc") },
+                    { key: "health", label: t("nanoshieldArmor"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.health + 1) * 15, desc: t("nanoshieldArmorDesc") },
+                    { key: "speed", label: t("reactorThrusters"), icon: <Activity className="w-3.5 h-3.5" />, cost: (shopUpgrades.speed + 1) * 20, desc: t("reactorThrustersDesc") },
+                    { key: "magnet", label: t("quantumHarvester"), icon: <Sparkles className="w-3.5 h-3.5" />, cost: (shopUpgrades.magnet + 1) * 15, desc: t("quantumHarvesterDesc") },
+                    { key: "regen", label: t("naniteRepairSystems"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.regen + 1) * 25, desc: t("naniteRepairSystemsDesc") },
                   ].map((item) => {
                     const currentLvl = (shopUpgrades as any)[item.key];
                     const maxed = currentLvl >= 5;
@@ -2620,15 +2671,15 @@ export default function App() {
                           }`}
                         >
                           {maxed ? (
-                            <span>MAXED</span>
+                            <span>{t("maxed")}</span>
                           ) : payWithPiMode ? (
                             <>
-                              <span className="text-[8px] opacity-85 uppercase leading-none">Pi Pay</span>
+                              <span className="text-[8px] opacity-85 uppercase leading-none">{t("piPayLabel")}</span>
                               <span className="font-bold mt-0.5">{(item.cost * 0.001).toFixed(3)}π</span>
                             </>
                           ) : (
                             <>
-                              <span className="text-[8px] opacity-80 uppercase leading-none">Upgrade</span>
+                              <span className="text-[8px] opacity-80 uppercase leading-none">{t("upgradeLabel")}</span>
                               <span className="font-bold mt-0.5">{item.cost}¢</span>
                             </>
                           )}
@@ -2641,16 +2692,16 @@ export default function App() {
                 /* Pi Exchange Panel */
                 <div className="space-y-3.5 max-h-[190px] overflow-y-auto pr-1">
                   <div className="p-2 bg-purple-50 rounded-lg border border-purple-100 text-[9px] font-mono leading-normal text-purple-700">
-                    <span className="font-extrabold text-purple-800 uppercase block mb-1">Giao dịch phi tập trung:</span>
-                    • Nạp: 1 Pi Testnet = 10,000 Xu (¢)<br />
-                    • Rút: 20,000 Xu (¢) = 1 Pi Testnet<br />
-                    • Rút tối thiểu: 500 Xu (¢)
+                    <span className="font-extrabold text-purple-800 uppercase block mb-1">{t("decentralizedExchange")}</span>
+                    {t("depositRate")}<br />
+                    {t("withdrawRate")}<br />
+                    {t("minWithdraw")}
                   </div>
 
                   {/* Buy options */}
                   <div className="space-y-1.5">
                     <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block">
-                      🛒 Nạp Xu (Trả Pi từ Ví)
+                      {t("depositTitle")}
                     </span>
                     <div className="grid grid-cols-2 gap-1.5">
                       {[
@@ -2664,7 +2715,7 @@ export default function App() {
                           onClick={() => buyCoinsWithPi(pkg.coins, pkg.pi)}
                           className="p-1.5 border border-purple-200 hover:border-purple-500 bg-white hover:bg-purple-50/30 transition text-left rounded-lg cursor-pointer flex flex-col justify-between shadow-sm"
                         >
-                          <span className="text-[10px] font-mono font-bold text-slate-800">+{pkg.coins} Xu</span>
+                          <span className="text-[10px] font-mono font-bold text-slate-800">+{pkg.coins} {language === "vi" ? "Xu" : "Coins"}</span>
                           <span className="text-[8px] font-bold font-mono text-purple-600 mt-0.5">{pkg.pi} π</span>
                         </button>
                       ))}
@@ -2674,7 +2725,7 @@ export default function App() {
                   {/* Sell options */}
                   <div className="space-y-1.5">
                     <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block">
-                      💰 Rút Xu (Nhận Pi về Ví)
+                      {t("withdrawTitle")}
                     </span>
                     {piUser ? (
                       <div className="grid grid-cols-2 gap-1.5">
@@ -2696,7 +2747,7 @@ export default function App() {
                                   : "border-amber-200 hover:border-amber-500 bg-white hover:bg-amber-50/20"
                               }`}
                             >
-                              <span className="text-[10px] font-mono font-bold text-slate-800">-{pkg.coins} Xu</span>
+                              <span className="text-[10px] font-mono font-bold text-slate-800">-{pkg.coins} {language === "vi" ? "Xu" : "Coins"}</span>
                               <span className="text-[8px] font-bold font-mono text-amber-600 mt-0.5">+{pkg.pi} π</span>
                             </button>
                           );
@@ -2704,7 +2755,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-center text-[9px] text-slate-500 font-medium">
-                        Vui lòng kết nối ví Pi để thực hiện chức năng Bán Xu.
+                        {t("connectWalletToSell")}
                       </div>
                     )}
                   </div>
@@ -2717,7 +2768,7 @@ export default function App() {
               <div className="bg-brand-card border border-brand-border rounded-xl p-3.5">
                 <div className="flex items-center space-x-2 text-brand-muted text-[10px] font-bold uppercase tracking-wider mb-2 font-mono">
                   <Trophy className="w-4 h-4 text-brand-accent" />
-                  <span>Mission Log Records</span>
+                  <span>{t("missionLogRecords")}</span>
                 </div>
                 <div className="space-y-1.5 font-mono">
                   {highScores.map((score, idx) => (
@@ -2727,8 +2778,8 @@ export default function App() {
                         <span className="text-slate-700">{score.time}</span>
                       </div>
                       <div className="flex items-center space-x-3.5">
-                        <span className="text-rose-400 font-bold">{score.kills} KILLS</span>
-                        <span className="text-indigo-400 font-bold">LV.{score.level}</span>
+                        <span className="text-rose-400 font-bold">{score.kills} {t("killsLabel")}</span>
+                        <span className="text-indigo-400 font-bold">{t("levelLabel")}.{score.level}</span>
                       </div>
                     </div>
                   ))}
@@ -2742,51 +2793,80 @@ export default function App() {
                 onClick={resetSaveData}
                 className="text-[9px] text-brand-muted hover:text-rose-500 font-mono cursor-pointer transition underline uppercase tracking-wider"
               >
-                Clear Saved Base Data
+                {t("clearSaveData")}
               </button>
             </div>
           </div>
         )}
-               {/* ==========================================
+
+        {/* ==========================================
             TUTORIAL MODAL
             ========================================== */}
         {showTutorial && (
           <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
             <div className="bg-brand-card border-2 border-brand-border rounded-xl p-5 w-full max-w-[380px] space-y-4 geo-shadow">
               <h3 className="text-lg font-bold tracking-tight text-center text-brand-accent font-display uppercase">
-                Survival Protocols
+                {t("tutorialTitle")}
               </h3>
               <div className="space-y-3 text-xs text-slate-600">
                 <div className="flex items-start space-x-3">
                   <div className="w-5 h-5 bg-brand-card border border-brand-border rounded flex items-center justify-center shrink-0 font-mono text-[9px] text-brand-accent font-bold">
-                    NAV
+                    {t("navTitle")}
                   </div>
-                  <p className="font-sans leading-tight">Slide joystick on the bottom half of the screen, or use <span className="text-brand-accent font-mono font-bold">WASD/Arrows</span> on desktop.</p>
+                  <p className="font-sans leading-tight">
+                    {language === "vi" ? (
+                      <>Trượt cần điều khiển ở nửa dưới màn hình hoặc dùng phím <span className="text-brand-accent font-mono font-bold">WASD/Mũi tên</span> trên máy tính.</>
+                    ) : language === "zh" ? (
+                      <>在屏幕下半部分滑动摇杆，或在电脑上使用 <span className="text-brand-accent font-mono font-bold">WASD/方向键</span> 移动。</>
+                    ) : language === "es" ? (
+                      <>Deslice el joystick en la mitad inferior de la pantalla, o use <span className="text-brand-accent font-mono font-bold">WASD/Flechas</span> en la PC.</>
+                    ) : language === "ko" ? (
+                      <>화면 아래 절반에서 조이스틱을 슬라이드하거나 데스크톱에서 <span className="text-brand-accent font-mono font-bold">WASD/방향키</span>를 사용하십시오.</>
+                    ) : language === "ja" ? (
+                      <>画面の下半分でジョイスティックをスライドするか、デスクトップで <span className="text-brand-accent font-mono font-bold">WASD/方向キー</span> を使用します。</>
+                    ) : (
+                      <>Slide joystick on the bottom half of the screen, or use <span className="text-brand-accent font-mono font-bold">WASD/Arrows</span> on desktop.</>
+                    )}
+                  </p>
                 </div>
                 <div className="flex items-start space-x-3">
                   <div className="w-5 h-5 bg-brand-card border border-brand-border rounded flex items-center justify-center shrink-0 font-mono text-[9px] text-brand-accent font-bold">
-                    WEP
+                    {t("wepTitle")}
                   </div>
-                  <p className="font-sans leading-tight">Weapons <span className="text-brand-accent font-bold">autofire automatically</span> targeting the nearest invader. Focus strictly on navigation.</p>
+                  <p className="font-sans leading-tight">
+                    {language === "vi" ? (
+                      <>Vũ khí <span className="text-brand-accent font-bold">tự động bắn mục tiêu</span> gần nhất. Bạn chỉ cần tập trung di chuyển né tránh.</>
+                    ) : language === "zh" ? (
+                      <>武器会<span className="text-brand-accent font-bold">自动瞄准</span>最近的敌人进行射击。您只需专注于躲避移动即可。</>
+                    ) : language === "es" ? (
+                      <>Las armas <span className="text-brand-accent font-bold">disparan automáticamente</span> apuntando al invasor más cercano. Enfóquese estrictamente en la navegación.</>
+                    ) : language === "ko" ? (
+                      <>무기는 가장 가까운 적을 겨냥해 <span className="text-brand-accent font-bold">자동으로 발사</span>됩니다. 온전히 회피 및 이동에 집중하십시오.</>
+                    ) : language === "ja" ? (
+                      <>兵器は最も近い敵をターゲットに<span className="text-brand-accent font-bold">自動射撃</span>します。回避と移動のみに専念してください。</>
+                    ) : (
+                      <>Weapons <span className="text-brand-accent font-bold">autofire automatically</span> targeting the nearest invader. Focus strictly on navigation.</>
+                    )}
+                  </p>
                 </div>
                 <div className="flex items-start space-x-3">
                   <div className="w-5 h-5 bg-brand-card border border-brand-border rounded flex items-center justify-center shrink-0 font-mono text-[9px] text-brand-accent font-bold">
                     CORE
                   </div>
-                  <p className="font-sans leading-tight">Gather glowing energy orbs dropped by targets to upgrade system specs during active deployment.</p>
+                  <p className="font-sans leading-tight">{t("coreDesc")}</p>
                 </div>
                 <div className="flex items-start space-x-3">
                   <div className="w-5 h-5 bg-brand-card border border-brand-border rounded flex items-center justify-center shrink-0 font-mono text-[9px] text-brand-accent font-bold">
                     META
                   </div>
-                  <p className="font-sans leading-tight">Accumulate currency to unlock permanent engineering core upgrades inside the base shop.</p>
+                  <p className="font-sans leading-tight">{t("metaDesc")}</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowTutorial(false)}
                 className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg cursor-pointer text-xs transition font-display uppercase tracking-wider"
               >
-                Acknowledge Protocols
+                {t("acknowledgeProtocols")}
               </button>
             </div>
           </div>
@@ -2803,12 +2883,12 @@ export default function App() {
               <div className="grid grid-cols-3 gap-2.5 mb-1.5 pointer-events-none">
                 {/* Level box */}
                 <div className="bg-slate-900/90 border border-slate-800 px-3 py-1 rounded-lg flex items-center justify-center space-x-1.5 text-center">
-                  <span className="text-slate-400 text-[8px] font-mono uppercase">Level</span>
+                  <span className="text-slate-400 text-[8px] font-mono uppercase">{t("levelLabel")}</span>
                   <span className="text-indigo-400 font-bold font-display text-xs">{gameStats.level}</span>
                 </div>
                 {/* Time box */}
                 <div className="bg-slate-900/90 border border-slate-800 px-3 py-1 rounded-lg flex items-center justify-center space-x-1.5 text-center">
-                  <span className="text-slate-400 text-[8px] font-mono uppercase">Time</span>
+                  <span className="text-slate-400 text-[8px] font-mono uppercase">{t("timeLabel")}</span>
                   <span className="text-slate-200 font-bold font-mono text-[11px] tracking-wider">{gameStats.time}</span>
                 </div>
                 {/* Kills box */}
@@ -2872,12 +2952,12 @@ export default function App() {
           <div className="absolute inset-0 z-40 bg-slate-900/45 backdrop-blur-md flex flex-col justify-center items-center p-6 space-y-6 animate-fade-in dot-matrix">
             <div className="text-center">
               <div className="inline-block border border-brand-accent/20 bg-brand-accent/5 px-2.5 py-0.5 rounded text-[9px] font-mono text-brand-accent uppercase tracking-widest mb-1.5">
-                Evolution Protocol Active
+                {t("evolutionProtocolActive")}
               </div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-800 font-display uppercase">
-                TACTICAL ADAPTATION
+                {t("tacticalAdaptation")}
               </h2>
-              <p className="text-xs text-brand-muted mt-1 font-sans">Choose engineering update to load</p>
+              <p className="text-xs text-brand-muted mt-1 font-sans">{t("chooseUpgradeToLoad")}</p>
             </div>
 
             {/* Upgrades List Cards */}
@@ -2892,8 +2972,24 @@ export default function App() {
                     {opt.icon}
                   </div>
                   <div className="space-y-0.5 flex-1">
-                    <span className="text-xs font-bold text-slate-800 font-display block uppercase">{opt.name}</span>
-                    <span className="text-[10px] text-slate-600 block leading-tight font-sans">{opt.desc}</span>
+                    <span className="text-xs font-bold text-slate-800 font-display block uppercase">
+                      {opt.id === "weapon_projectile" ? t("optPlasmaCannon")
+                       : opt.id === "weapon_laser" ? t("optTeslaBeam")
+                       : opt.id === "stat_maxHp" ? t("optNanoShield")
+                       : opt.id === "stat_armor" ? t("optTitaniumPlating")
+                       : opt.id === "stat_speed" ? t("optOverdriveThrusters")
+                       : opt.id === "stat_magnet" ? t("optQuantumAttractor")
+                       : opt.name}
+                    </span>
+                    <span className="text-[10px] text-slate-600 block leading-tight font-sans">
+                      {opt.id === "weapon_projectile" ? t("optPlasmaCannonDesc")
+                       : opt.id === "weapon_laser" ? t("optTeslaBeamDesc")
+                       : opt.id === "stat_maxHp" ? t("optNanoShieldDesc")
+                       : opt.id === "stat_armor" ? t("optTitaniumPlatingDesc")
+                       : opt.id === "stat_speed" ? t("optOverdriveThrustersDesc")
+                       : opt.id === "stat_magnet" ? t("optQuantumAttractorDesc")
+                       : opt.desc}
+                    </span>
                   </div>
                   <div className="text-[9px] font-mono font-bold border border-brand-border px-1.5 py-0.5 rounded bg-brand-card text-brand-accent">
                     Lv.{opt.level}
@@ -2909,7 +3005,7 @@ export default function App() {
                 className="w-full py-2.5 bg-brand-card hover:bg-red-50 border-2 border-red-200 hover:border-red-400 text-[#ef4444] font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
-                <span className="font-mono uppercase tracking-wider text-[10px]">Reroll options (Watch Broadcast)</span>
+                <span className="font-mono uppercase tracking-wider text-[10px]">{t("rerollWatchAd")}</span>
               </button>
             </div>
           </div>
@@ -2923,37 +3019,37 @@ export default function App() {
             {/* Defeat Banner */}
             <div className="text-center mt-6">
               <div className="inline-block border border-rose-500/20 bg-rose-500/5 px-2.5 py-0.5 rounded text-[9px] font-mono text-rose-500 uppercase tracking-widest mb-1">
-                Telemetry Interrupted
+                {t("telemetryInterrupted")}
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-rose-500 font-display uppercase">
-                MISSION OVER
+                {t("missionOver")}
               </h1>
-              <p className="text-[10px] text-brand-muted font-mono uppercase mt-0.5">Pioneer unit offline // core compromised</p>
+              <p className="text-[10px] text-brand-muted font-mono uppercase mt-0.5">{t("pioneerOffline")}</p>
             </div>
 
             {/* Run statistics */}
             <div className="bg-brand-card border border-brand-border rounded-xl p-5 space-y-4 max-w-[380px] mx-auto w-full geo-shadow">
               <h3 className="text-[11px] font-bold tracking-wider text-brand-accent border-b border-brand-border pb-1.5 uppercase font-mono flex items-center justify-between">
-                <span>Log Extract Report</span>
+                <span>{t("logExtractReport")}</span>
                 <span className="text-brand-muted font-normal text-[9px]">ID: 409-SWARM</span>
               </h3>
               <div className="space-y-3 text-xs font-mono">
                 <div className="flex justify-between items-center">
-                  <span className="text-brand-muted">Mission Duration:</span>
+                  <span className="text-brand-muted">{t("missionDuration")}</span>
                   <span className="text-slate-800 font-bold">{finalStats.time}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-brand-muted">Invaders Defeated:</span>
-                  <span className="text-rose-400 font-bold">{finalStats.kills} Kills</span>
+                  <span className="text-brand-muted">{t("invadersDefeated")}</span>
+                  <span className="text-rose-400 font-bold">{finalStats.kills} {t("killsLabel")}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-brand-muted">Evolution Level:</span>
-                  <span className="text-indigo-400 font-bold">Level {finalStats.level}</span>
+                  <span className="text-brand-muted">{t("evolutionLevel")}</span>
+                  <span className="text-indigo-400 font-bold">{t("levelLabel")} {finalStats.level}</span>
                 </div>
                 <div className="flex justify-between items-center border-t border-brand-border pt-3 font-sans font-bold">
                   <span className="text-brand-accent flex items-center space-x-1.5 uppercase text-[10px] tracking-wider font-display">
                     <Coins className="w-3.5 h-3.5" />
-                    <span>Credits Retrieved:</span>
+                    <span>{t("creditsRetrieved")}</span>
                   </span>
                   <span className="text-brand-accent font-mono text-sm font-bold">{finalStats.gold} ¢</span>
                 </div>
@@ -2968,7 +3064,7 @@ export default function App() {
                   className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex items-center justify-center space-x-2 transition cursor-pointer geo-shadow-indigo active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
                 >
                   <Heart className="w-4 h-4 fill-current text-white" />
-                  <span className="font-display uppercase tracking-wider text-xs">Revive (Watch Broadcast)</span>
+                  <span className="font-display uppercase tracking-wider text-xs">{t("reviveWatchAd")}</span>
                 </button>
               )}
 
@@ -2978,7 +3074,7 @@ export default function App() {
                   className="w-full py-2.5 bg-brand-card hover:bg-slate-50 border border-brand-accent/20 hover:border-brand-accent/40 text-brand-accent font-bold rounded-lg text-xs flex items-center justify-center space-x-2 transition cursor-pointer"
                 >
                   <Coins className="w-4 h-4" />
-                  <span className="font-mono uppercase tracking-wider text-[10px]">Double Gold (Watch Broadcast)</span>
+                  <span className="font-mono uppercase tracking-wider text-[10px]">{t("doubleGoldWatchAd")}</span>
                 </button>
               )}
 
@@ -2986,13 +3082,13 @@ export default function App() {
                 onClick={() => setGameState("START")}
                 className="w-full py-3 bg-brand-card hover:bg-slate-50 border border-brand-border hover:border-brand-muted/40 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center space-x-1 transition cursor-pointer"
               >
-                <span className="font-display uppercase tracking-widest">Return to Base</span>
+                <span className="font-display uppercase tracking-widest">{t("returnToBase")}</span>
                 <ArrowRight className="w-4 h-4 ml-1 text-brand-accent" />
               </button>
             </div>
 
             <div className="text-center text-[9px] text-brand-muted font-mono pb-2">
-              Engine status preserved. Local save-state synchronized automatically.
+              {t("engineStatusPreserved")}
             </div>
           </div>
         )}
