@@ -1,0 +1,6 @@
+{
+  "name": "Pioneer Survivors",
+  "description": "A mobile-optimized HTML5 roguelike survival game inspired by Vampire Survivors. Move with the virtual joystick, collect energy orbs to level up, and upgrade your skills to survive the relentless enemy swarm.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

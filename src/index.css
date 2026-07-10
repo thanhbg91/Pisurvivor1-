@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-brand-bg: #f1f5f9;
+  --color-brand-card: #ffffff;
+  --color-brand-border: #cbd5e1;
+  --color-brand-accent: #b45309;
+  --color-brand-muted: #475569;
+}
+
+/* Geometric Grid Background Pattern */
+.geometric-grid {
+  background-image: 
+    linear-gradient(to right, rgba(99, 102, 241, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Subtly animated dot matrix for geometric accents */
+.dot-matrix {
+  background-image: radial-gradient(rgba(226, 184, 94, 0.1) 1.5px, transparent 1.5px);
+  background-size: 12px 12px;
+}
+
+/* Isometric border shadows for balanced cards */
+.geo-shadow-sm {
+  box-shadow: 2px 2px 0px 0px rgba(226, 184, 94, 0.2);
+}
+
+.geo-shadow {
+  box-shadow: 4px 4px 0px 0px rgba(31, 31, 46, 1);
+}
+
+.geo-shadow-accent {
+  box-shadow: 4px 4px 0px 0px rgba(226, 184, 94, 1);
+}
+
+.geo-shadow-indigo {
+  box-shadow: 4px 4px 0px 0px rgba(99, 102, 241, 1);
+}
+
+/* Custom linear gradient animations */
+@keyframes grid-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+}
+
+.pulse-grid {
+  animation: grid-pulse 8s infinite ease-in-out;
+}
