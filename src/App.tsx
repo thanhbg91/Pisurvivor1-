@@ -99,6 +99,57 @@ interface PiTransaction {
   memo?: string;
 }
 
+const aiTranslations: Record<string, { title: string; intensity: string; playstyle: string; status: string; activityScore: string; bonusLabel: string }> = {
+  en: {
+    title: "AI Director",
+    intensity: "Intensity",
+    playstyle: "Playstyle",
+    status: "AI Status",
+    activityScore: "Activity",
+    bonusLabel: "REWARD BONUS",
+  },
+  vi: {
+    title: "AI Giám Sát",
+    intensity: "Độ khó AI",
+    playstyle: "Lối chơi",
+    status: "Trạng thái AI",
+    activityScore: "Hoạt động",
+    bonusLabel: "THƯỞNG THÊM",
+  },
+  zh: {
+    title: "AI 战局导演",
+    intensity: "动态难度",
+    playstyle: "玩家战术",
+    status: "AI 决策状态",
+    activityScore: "活跃指数",
+    bonusLabel: "额外奖励加成",
+  },
+  es: {
+    title: "Director IA",
+    intensity: "Intensidad",
+    playstyle: "Táctica",
+    status: "Estado IA",
+    activityScore: "Actividad",
+    bonusLabel: "BONO RECOMPENSA",
+  },
+  ko: {
+    title: "AI 디렉터",
+    intensity: "AI 난이도",
+    playstyle: "플레이 성향",
+    status: "AI 상태",
+    activityScore: "활동량",
+    bonusLabel: "추가 보상 배율",
+  },
+  ja: {
+    title: "AI ディレクター",
+    intensity: "AI 難易度",
+    playstyle: "プレイスタイル",
+    status: "AI ステータス",
+    activityScore: "活動指数",
+    bonusLabel: "追加報酬ボーナス",
+  },
+};
+
 export default function App() {
   // ==========================================
   // REACT STATE (UI, Overlays, Persistent Upgrades)
@@ -148,6 +199,10 @@ export default function App() {
     level: 1,
     xpPercent: 0,
     hpPercent: 100,
+    aiIntensity: 1.0,
+    aiPlaystyle: "Cân bằng",
+    aiAdjustment: "Ổn định",
+    aiActivityScore: 50,
   });
 
   const [finalStats, setFinalStats] = useState({
@@ -312,6 +367,20 @@ export default function App() {
     bossSpawned: false,
     shieldAngle: 0,
     lastFrameTime: 0,
+    aiDirector: {
+      intensity: 1.0,
+      dodgeCloseCalls: 0,
+      damageTakenInWindow: 0,
+      killsInWindow: 0,
+      lastEvaluationTime: 0,
+      playstyleLabel: "Cân bằng",
+      adjustmentReason: "Ổn định",
+      activityScore: 50,
+      directionChanges: 0,
+      stationaryTicks: 0,
+      movingTicks: 0,
+      lastMoveAngle: null as number | null,
+    },
   });
 
   // ==========================================
@@ -569,6 +638,20 @@ export default function App() {
       bossSpawned: false,
       shieldAngle: 0,
       lastFrameTime: performance.now(),
+      aiDirector: {
+        intensity: 1.0,
+        dodgeCloseCalls: 0,
+        damageTakenInWindow: 0,
+        killsInWindow: 0,
+        lastEvaluationTime: 0,
+        playstyleLabel: "Cân bằng",
+        adjustmentReason: "Ổn định",
+        activityScore: 50,
+        directionChanges: 0,
+        stationaryTicks: 0,
+        movingTicks: 0,
+        lastMoveAngle: null as number | null,
+      },
     };
 
     setGameState("PLAYING");
@@ -580,6 +663,10 @@ export default function App() {
       level: 1,
       xpPercent: 0,
       hpPercent: 100,
+      aiIntensity: 1.0,
+      aiPlaystyle: "Cân bằng",
+      aiAdjustment: "Ổn định",
+      aiActivityScore: 50,
     });
   };
 
@@ -1689,6 +1776,20 @@ export default function App() {
             decay: 0.04
           });
         }
+
+        // AI Director: Accumulate movement statistics
+        engine.aiDirector.movingTicks += dt;
+        const curAngle = Math.atan2(dy, dx);
+        if (engine.aiDirector.lastMoveAngle !== null) {
+          const diff = Math.abs(curAngle - engine.aiDirector.lastMoveAngle);
+          // Register direction changes as zig-zag tactical movement
+          if (diff > 0.6 && diff < 2.5) {
+            engine.aiDirector.directionChanges += dt;
+          }
+        }
+        engine.aiDirector.lastMoveAngle = curAngle;
+      } else {
+        engine.aiDirector.stationaryTicks += dt;
       }
 
       // Update passive Shield orbit angle
@@ -1706,7 +1807,8 @@ export default function App() {
 
       // 5. SPAWN SWARMS GRADUALLY IN CIRCLES
       engine.spawnTimer += dt;
-      let spawnRate = Math.max(25, 80 - Math.floor(engine.gameTime * 0.4)); // gets faster and harder
+      // Spawn rate is dynamically adjusted by the AI Director intensity (lower spawn rate = faster spawns)
+      let spawnRate = Math.max(20, (80 - Math.floor(engine.gameTime * 0.4)) / engine.aiDirector.intensity);
       if (engine.spawnTimer >= spawnRate) {
         engine.spawnTimer = 0;
 
@@ -1764,13 +1866,17 @@ export default function App() {
         const enemyX = engine.player.x + Math.cos(spawnAngle) * dist;
         const enemyY = engine.player.y + Math.sin(spawnAngle) * dist;
 
+        // Scale hp and speed dynamically based on AI Director intensity
+        const finalHp = Math.max(1, Math.floor(hp * Math.sqrt(engine.aiDirector.intensity)));
+        const finalSpeed = speed * Math.sqrt(engine.aiDirector.intensity);
+
         engine.enemies.push({
           id: Math.random().toString(),
           x: enemyX,
           y: enemyY,
-          hp,
-          maxHp: hp,
-          speed,
+          hp: finalHp,
+          maxHp: finalHp,
+          speed: finalSpeed,
           size,
           color,
           type: enemyType,
@@ -1788,13 +1894,21 @@ export default function App() {
           enemy.y += (edy / edist) * enemy.speed * dt;
         }
 
+        // Close proximity dodge check (distance is close but they aren't colliding)
+        if (edist < engine.player.size + enemy.size + 45 && edist >= engine.player.size + enemy.size) {
+          if (moveDist > 0.1) {
+            engine.aiDirector.dodgeCloseCalls += 0.016 * dt;
+          }
+        }
+
         // Player Collision Damage Check
         if (edist < engine.player.size + enemy.size) {
-          const dmg = (enemy.type === "boss" ? 0.8 : enemy.type === "goliath" ? 0.4 : 0.15) * dt;
+          const dmg = (enemy.type === "boss" ? 0.8 : enemy.type === "goliath" ? 0.4 : 0.15) * dt * Math.sqrt(engine.aiDirector.intensity);
           // Apply armor reduction from meta shop
           const armorReduction = shopUpgrades.regen * 0.05; // Use regen levels as minor armor reduction too
           const finalHit = Math.max(0.05, dmg * (1 - armorReduction));
           engine.player.hp -= finalHit;
+          engine.aiDirector.damageTakenInWindow += finalHit;
 
           if (Math.random() < 0.05) {
             playSfx("hurt");
@@ -1918,6 +2032,7 @@ export default function App() {
         if (e.hp <= 0) {
           playSfx("kill");
           engine.player.kills += 1;
+          engine.aiDirector.killsInWindow += 1;
 
           // Splatter particles
           for (let sp = 0; sp < 8; sp++) {
@@ -1937,10 +2052,16 @@ export default function App() {
           const isBoss = e.type === "boss";
           const isGold = isBoss ? true : Math.random() < 0.18; // 18% gold chance from normal targets
 
+          // High difficulty rewards: Scale the gold/XP amount if AI intensity is high!
+          let dropAmount = isBoss ? 15 : e.points;
+          if (engine.aiDirector.intensity > 1.1) {
+            dropAmount = Math.ceil(dropAmount * engine.aiDirector.intensity);
+          }
+
           engine.items.push({
             x: e.x,
             y: e.y,
-            amount: isBoss ? 15 : e.points,
+            amount: dropAmount,
             size: isGold ? 4 : 3,
             color: isGold ? "#fbbf24" : isBoss ? "#d946ef" : "#10b981", // gold, magenta for boss, green for standard xp
             isGold,
@@ -1995,6 +2116,151 @@ export default function App() {
 
           engine.items.splice(i, 1);
         }
+      }
+
+      // ==========================================
+      // AI ADAPTIVE DIFFICULTIES SYSTEM EVALUATOR
+      // ==========================================
+      if (engine.gameTime - engine.aiDirector.lastEvaluationTime >= 3.0) {
+        const totalTicks = engine.aiDirector.movingTicks + engine.aiDirector.stationaryTicks || 1;
+        const moveRatio = engine.aiDirector.movingTicks / totalTicks;
+        const zigzagRatio = engine.aiDirector.directionChanges / totalTicks;
+        const dodgeRate = engine.aiDirector.dodgeCloseCalls;
+
+        // Calculate active gameplay score (0 to 100)
+        let activityScore = 50;
+        if (moveRatio > 0.75) activityScore += 15;
+        if (moveRatio < 0.2) activityScore -= 15;
+        activityScore += Math.min(dodgeRate * 8, 25);
+        activityScore += Math.min(zigzagRatio * 150, 15);
+        activityScore -= Math.min(engine.aiDirector.damageTakenInWindow * 1.5, 25);
+        activityScore = Math.max(0, Math.min(100, activityScore));
+        engine.aiDirector.activityScore = activityScore;
+
+        // Dynamic playstyle profile labels based on metrics and selected language
+        let label = "Cân bằng";
+        if (language === "vi") {
+          if (moveRatio < 0.25) label = "Bất động (Thủ)";
+          else if (dodgeRate > 2.0 && moveRatio > 0.6) label = "Siêu né (Pro)";
+          else if (zigzagRatio > 0.12) label = "Tấn công (Nhanh)";
+          else if (moveRatio > 0.8) label = "Năng động";
+          else label = "Cân bằng";
+        } else if (language === "zh") {
+          if (moveRatio < 0.25) label = "站桩防守";
+          else if (dodgeRate > 2.0 && moveRatio > 0.6) label = "极限微操闪避";
+          else if (zigzagRatio > 0.12) label = "蛇形激进型";
+          else if (moveRatio > 0.8) label = "高频活跃移动";
+          else label = "均衡发展";
+        } else if (language === "es") {
+          if (moveRatio < 0.25) label = "Fijo (Defensivo)";
+          else if (dodgeRate > 2.0 && moveRatio > 0.6) label = "Esquivador Pro";
+          else if (zigzagRatio > 0.12) label = "Agresivo (Zigzag)";
+          else if (moveRatio > 0.8) label = "Muy Activo";
+          else label = "Equilibrado";
+        } else if (language === "ko") {
+          if (moveRatio < 0.25) label = "정지수비형";
+          else if (dodgeRate > 2.0 && moveRatio > 0.6) label = "극한회피프로";
+          else if (zigzagRatio > 0.12) label = "돌격지그재그";
+          else if (moveRatio > 0.8) label = "기동형";
+          else label = "균형잡힌";
+        } else if (language === "ja") {
+          if (moveRatio < 0.25) label = "固定防衛";
+          else if (dodgeRate > 2.0 && moveRatio > 0.6) label = "極限微回避プロ";
+          else if (zigzagRatio > 0.12) label = "ジグザグアタック";
+          else if (moveRatio > 0.8) label = "アクティブ移動";
+          else label = "バランス";
+        } else {
+          if (moveRatio < 0.25) label = "Stationary (Defense)";
+          else if (dodgeRate > 2.0 && moveRatio > 0.6) label = "Micro-Dodge Pro";
+          else if (zigzagRatio > 0.12) label = "Aggressive (Zigzag)";
+          else if (moveRatio > 0.8) label = "Highly Active";
+          else label = "Balanced";
+        }
+        engine.aiDirector.playstyleLabel = label;
+
+        // Set intensity adjust reason & values
+        let nextIntensity = 1.0;
+        let reason = "Ổn định";
+
+        const currentHpPercent = (engine.player.hp / engine.player.maxHp) * 100;
+
+        if (currentHpPercent < 30) {
+          nextIntensity = 0.5;
+          reason = language === "vi" ? "Trợ lực HP thấp" :
+                   language === "zh" ? "低生命值援助" :
+                   language === "es" ? "Soporte Vida Baja" :
+                   language === "ko" ? "체력 지원" :
+                   language === "ja" ? "低HP救済" : "Low HP Aid";
+
+          // EMERGENCY INTERVENTION: Drop healing items near the player if none exist
+          const nearRepair = engine.items.some(it => it.type === "repair" && Math.sqrt(Math.pow(it.x - engine.player.x, 2) + Math.pow(it.y - engine.player.y, 2)) < 300);
+          if (!nearRepair && Math.random() < 0.6) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 120 + Math.random() * 60;
+            engine.items.push({
+              id: "ai_emergency_" + Math.random().toString(),
+              x: engine.player.x + Math.cos(angle) * dist,
+              y: engine.player.y + Math.sin(angle) * dist,
+              type: "repair",
+              amount: 25,
+            });
+            engine.damageTexts.push({
+              x: engine.player.x,
+              y: engine.player.y - 45,
+              text: language === "vi" ? "HỖ TRỢ AI: CẤP THIẾT BỊ HỒI HP!" : "AI SUPPORT: NANITE DROP ACTIVATED!",
+              color: "#34d399",
+              alpha: 1,
+              vy: -0.6
+            });
+          }
+        } else if (engine.aiDirector.damageTakenInWindow > 25) {
+          nextIntensity = 0.75;
+          reason = language === "vi" ? "Giảm tải quái vật" :
+                   language === "zh" ? "怪物减载" :
+                   language === "es" ? "Menos Enemigos" :
+                   language === "ko" ? "몬스터 완화" :
+                   language === "ja" ? "敵スポーン減" : "Reducing Swarm";
+        } else if (engine.aiDirector.damageTakenInWindow === 0 && engine.aiDirector.killsInWindow >= 8) {
+          nextIntensity = 1.45;
+          reason = language === "vi" ? "Thử thách cực hạn" :
+                   language === "zh" ? "极限挑战" :
+                   language === "es" ? "Máximo Desafío" :
+                   language === "ko" ? "최대 도전" :
+                   language === "ja" ? "極限チャレンジ" : "Challenging Elite";
+        } else if (engine.aiDirector.damageTakenInWindow === 0 && engine.aiDirector.killsInWindow >= 4) {
+          nextIntensity = 1.2;
+          reason = language === "vi" ? "Tăng áp lực" :
+                   language === "zh" ? "增加压力" :
+                   language === "es" ? "Más Tensión" :
+                   language === "ko" ? "난이도 상승" :
+                   language === "ja" ? "難易度上昇" : "Escalating Swarm";
+        } else if (moveRatio > 0.8 && engine.aiDirector.killsInWindow > 0) {
+          nextIntensity = 1.1;
+          reason = language === "vi" ? "Thích ứng di chuyển" :
+                   language === "zh" ? "移动适应中" :
+                   language === "es" ? "Ritmo Activo" :
+                   language === "ko" ? "움직임 적응" :
+                   language === "ja" ? "アクティブ対応" : "Adaptive Pace";
+        } else {
+          nextIntensity = 1.0;
+          reason = language === "vi" ? "Tối ưu ổn định" :
+                   language === "zh" ? "状态稳定" :
+                   language === "es" ? "Ritmo Estable" :
+                   language === "ko" ? "안정 유지" :
+                   language === "ja" ? "安定フロー" : "Optimal Flow";
+        }
+
+        engine.aiDirector.intensity = nextIntensity;
+        engine.aiDirector.adjustmentReason = reason;
+
+        // Reset evaluation window metrics
+        engine.aiDirector.dodgeCloseCalls = 0;
+        engine.aiDirector.damageTakenInWindow = 0;
+        engine.aiDirector.killsInWindow = 0;
+        engine.aiDirector.directionChanges = 0;
+        engine.aiDirector.movingTicks = 0;
+        engine.aiDirector.stationaryTicks = 0;
+        engine.aiDirector.lastEvaluationTime = engine.gameTime;
       }
 
       // 11. PARTICLES & DAMAGE TEXTS ANIMATION UPDATES
@@ -2509,6 +2775,10 @@ export default function App() {
           level: engine.player.level,
           xpPercent: Math.floor((engine.player.xp / engine.player.xpNeeded) * 100),
           hpPercent: Math.floor((engine.player.hp / engine.player.maxHp) * 100),
+          aiIntensity: engine.aiDirector.intensity,
+          aiPlaystyle: engine.aiDirector.playstyleLabel,
+          aiAdjustment: engine.aiDirector.adjustmentReason,
+          aiActivityScore: Math.round(engine.aiDirector.activityScore),
         });
       }
 
@@ -2517,7 +2787,7 @@ export default function App() {
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, [gameState]);
+  }, [gameState, language]);
 
   // Handle touch joystick event listeners directly on parent
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -3450,6 +3720,90 @@ export default function App() {
                   <span>{gameStats.gold}</span>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating AI Adaptive Director HUD Panel */}
+        {gameState === "PLAYING" && (
+          <div className="absolute top-[96px] right-4 z-20 pointer-events-none flex justify-end animate-fade-in">
+            <div className="bg-slate-950/85 border border-indigo-500/30 backdrop-blur-md px-3 py-2 rounded-xl flex flex-col space-y-1 pointer-events-auto max-w-[170px] geo-shadow-sm transition-all duration-300">
+              <div className="flex items-center space-x-1.5 justify-between">
+                <div className="flex items-center space-x-1">
+                  <Activity className="w-3.5 h-3.5 text-indigo-400 animate-pulse shrink-0" />
+                  <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-200">
+                    {aiTranslations[language]?.title || aiTranslations["en"].title}
+                  </span>
+                </div>
+                <div className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                </div>
+              </div>
+
+              {/* Intensity bar / multiplier */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[8px] text-slate-400 font-mono uppercase">
+                  {aiTranslations[language]?.intensity || aiTranslations["en"].intensity}
+                </span>
+                <span className={`text-[10px] font-mono font-bold ${
+                  gameStats.aiIntensity > 1.2 ? "text-amber-400" : gameStats.aiIntensity < 0.8 ? "text-emerald-400" : "text-slate-200"
+                }`}>
+                  {gameStats.aiIntensity.toFixed(2)}x
+                </span>
+              </div>
+
+              {/* Intensity visualization bar */}
+              <div className="w-full h-1 bg-slate-900 border border-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-500 ${
+                    gameStats.aiIntensity > 1.2 ? "bg-amber-400" : gameStats.aiIntensity < 0.8 ? "bg-emerald-400" : "bg-indigo-500"
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(0, (gameStats.aiIntensity / 2.0) * 100))}%` }}
+                />
+              </div>
+
+              {/* Playstyle profile */}
+              <div className="flex items-center justify-between text-[8px] text-slate-400 pt-1.5">
+                <span className="font-mono uppercase">
+                  {aiTranslations[language]?.playstyle || aiTranslations["en"].playstyle}
+                </span>
+                <span className="font-bold text-slate-300 truncate max-w-[85px] text-[8.5px]">
+                  {gameStats.aiPlaystyle}
+                </span>
+              </div>
+
+              {/* Adjustment reason / AI status */}
+              <div className="flex flex-col text-[8px] text-slate-400 bg-slate-900/60 p-1 rounded border border-slate-900 mt-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono uppercase text-[7px] text-slate-500">
+                    {aiTranslations[language]?.status || aiTranslations["en"].status}
+                  </span>
+                  <span className="text-[7.5px] font-bold text-indigo-400 tracking-wide font-mono">
+                    {gameStats.aiAdjustment}
+                  </span>
+                </div>
+              </div>
+
+              {/* Activity score */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[8px] text-slate-400 font-mono uppercase">
+                  {aiTranslations[language]?.activityScore || aiTranslations["en"].activityScore}
+                </span>
+                <span className="text-[8px] font-mono font-bold text-indigo-300">
+                  {gameStats.aiActivityScore}%
+                </span>
+              </div>
+
+              {/* High difficulty bonus badge */}
+              {gameStats.aiIntensity > 1.1 && (
+                <div className="mt-1 px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded flex items-center justify-center space-x-1 animate-pulse">
+                  <Flame className="w-2.5 h-2.5 text-amber-500 fill-current shrink-0" />
+                  <span className="text-[7.5px] font-mono font-bold text-amber-400 uppercase tracking-tight">
+                    {aiTranslations[language]?.bonusLabel || aiTranslations["en"].bonusLabel}: +{Math.round((gameStats.aiIntensity - 1.0) * 100)}%
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}
