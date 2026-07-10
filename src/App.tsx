@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { Language, TranslationSet, translations, languages } from "./translations";
 import {
   Play, Flame, Shield, Activity, Sparkles, RotateCcw, Heart, Zap,
-  Volume2, VolumeX, Trophy, Coins, Skull, Star, HelpCircle, ArrowRight
+  Volume2, VolumeX, Trophy, Coins, Skull, Star, HelpCircle, ArrowRight,
+  History, FileText, Lock
 } from "lucide-react";
 
 // ==========================================
@@ -85,6 +86,17 @@ interface HighScore {
   gold: number;
   level: number;
   date: string;
+}
+
+interface PiTransaction {
+  id: string;
+  type: "deposit" | "withdrawal" | "upgrade_purchase";
+  amountCoins: number;
+  piAmount: number;
+  status: "success" | "pending" | "failed" | "cancelled";
+  timestamp: number;
+  txid?: string;
+  memo?: string;
 }
 
 export default function App() {
@@ -180,6 +192,8 @@ export default function App() {
   const [hasRevivedThisRun, setHasRevivedThisRun] = useState(false);
   const [doubleGoldApplied, setDoubleGoldApplied] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
 
   // ==========================================
   // PI NETWORK PLATFORM INTEGRATION STATES
@@ -196,7 +210,46 @@ export default function App() {
     return false;
   });
   const [piApiKeyConfigured, setPiApiKeyConfigured] = useState<boolean | null>(null);
-  const [shopTab, setShopTab] = useState<"upgrades" | "exchange">("upgrades");
+  const [shopTab, setShopTab] = useState<"upgrades" | "exchange" | "history">("upgrades");
+
+  const [transactions, setTransactions] = useState<PiTransaction[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("pioneer_pi_transactions");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
+
+  const logTransaction = (tx: Partial<PiTransaction>) => {
+    setTransactions((prev) => {
+      const existingIdx = prev.findIndex((t) => t.id === tx.id);
+      let next: PiTransaction[];
+      if (existingIdx > -1) {
+        next = [...prev];
+        next[existingIdx] = { ...next[existingIdx], ...tx } as PiTransaction;
+      } else {
+        const newTx: PiTransaction = {
+          id: tx.id || `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          type: tx.type || "deposit",
+          amountCoins: tx.amountCoins || 0,
+          piAmount: tx.piAmount || 0,
+          status: tx.status || "pending",
+          timestamp: tx.timestamp || Date.now(),
+          txid: tx.txid,
+          memo: tx.memo
+        };
+        next = [newTx, ...prev];
+      }
+      localStorage.setItem("pioneer_pi_transactions", JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Sync state setters to window globally so asynchronous callbacks from the Pi SDK
   // can target the mounted component instance correctly in React StrictMode/HMR double renders.
@@ -992,9 +1045,9 @@ export default function App() {
       if ((window as any).__setPayWithPiMode) (window as any).__setPayWithPiMode(true);
       else setPayWithPiMode(true);
 
-      // 2. Perform Pi.authenticate using the 'username' scope and handle incomplete payments
+      // 2. Perform Pi.authenticate using the 'username', 'payments', and 'wallet_address' scopes and handle incomplete payments
       console.log("[Pi SDK] Initiating Pi.authenticate...");
-      const auth = await Pi.authenticate(["username", "payments"], (incompletePayment: any) => {
+      const auth = await Pi.authenticate(["username", "payments", "wallet_address"], (incompletePayment: any) => {
         console.log("[Pi SDK] Incomplete payment found:", incompletePayment);
         fetch("/api/pi/complete", {
           method: "POST",
@@ -1142,6 +1195,16 @@ export default function App() {
               console.log(`[Pi SDK] Payment ${paymentId} ready for server approval...`);
               setPiPaymentStatus("approving");
               
+              logTransaction({
+                id: paymentId,
+                type: "upgrade_purchase",
+                amountCoins: cost,
+                piAmount: piAmount,
+                status: "pending",
+                timestamp: Date.now(),
+                memo: `Upgrade ${key === "damage" ? t("plasmaAccelerators") : key === "health" ? t("nanoshieldArmor") : key === "speed" ? t("reactorThrusters") : key === "magnet" ? t("quantumHarvester") : t("naniteRepairSystems")} (${t("hudLevel")} ${shopUpgrades[key] + 1})`
+              });
+
               fetch("/api/pi/approve", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1162,11 +1225,20 @@ export default function App() {
                   console.warn("[Pi SDK] Server approval failed:", err);
                   setPiPaymentStatus("error");
                   setPiPaymentError(err?.message || t("checkoutProtocolError"));
+                  logTransaction({
+                    id: paymentId,
+                    status: "failed"
+                  });
                 });
             },
             onReadyForServerCompletion: (paymentId: string, txid: string) => {
               console.log(`[Pi SDK] Payment ${paymentId} signed on blockchain, ready for completion...`);
               setPiPaymentStatus("completing");
+
+              logTransaction({
+                id: paymentId,
+                txid
+              });
 
               fetch("/api/pi/complete", {
                 method: "POST",
@@ -1194,6 +1266,11 @@ export default function App() {
                   playSfx("upgrade");
                   setPiPaymentStatus("success");
                   
+                  logTransaction({
+                    id: paymentId,
+                    status: "success"
+                  });
+
                   // Clear success state after 3 seconds
                   setTimeout(() => setPiPaymentStatus("idle"), 3000);
                 })
@@ -1201,17 +1278,29 @@ export default function App() {
                   console.warn("[Pi SDK] Server completion failed:", err);
                   setPiPaymentStatus("error");
                   setPiPaymentError(t("processSellError"));
+                  logTransaction({
+                    id: paymentId,
+                    status: "failed"
+                  });
                 });
             },
             onCancel: (paymentId: string) => {
               console.log("[Pi SDK] Payment cancelled by user:", paymentId);
               setPiPaymentStatus("cancelled");
+              logTransaction({
+                id: paymentId,
+                status: "cancelled"
+              });
               setTimeout(() => setPiPaymentStatus("idle"), 2500);
             },
             onError: (error: Error, payment: any) => {
               console.warn("[Pi SDK] Payment error:", error, payment);
               setPiPaymentStatus("error");
               setPiPaymentError(error.message || t("checkoutProtocolError"));
+              logTransaction({
+                id: payment?.identifier || `err-${Date.now()}`,
+                status: "failed"
+              });
               setTimeout(() => setPiPaymentStatus("idle"), 4000);
             }
           }
@@ -1261,6 +1350,16 @@ export default function App() {
               console.log(`[Pi SDK] Buy Xu payment ${paymentId} ready for server approval...`);
               setPiPaymentStatus("approving");
               
+              logTransaction({
+                id: paymentId,
+                type: "deposit",
+                amountCoins,
+                piAmount,
+                status: "pending",
+                timestamp: Date.now(),
+                memo: language === "vi" ? `Nạp ${amountCoins} Xu` : `Buy ${amountCoins} Coins`
+              });
+
               fetch("/api/pi/approve", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1281,11 +1380,20 @@ export default function App() {
                   console.warn("[Pi SDK] Server approval for Buy Xu failed:", err);
                   setPiPaymentStatus("error");
                   setPiPaymentError(err?.message || t("checkoutProtocolError"));
+                  logTransaction({
+                    id: paymentId,
+                    status: "failed"
+                  });
                 });
             },
             onReadyForServerCompletion: (paymentId: string, txid: string) => {
               console.log(`[Pi SDK] Buy Xu payment ${paymentId} signed, ready for completion...`);
               setPiPaymentStatus("completing");
+
+              logTransaction({
+                id: paymentId,
+                txid
+              });
 
               fetch("/api/pi/complete", {
                 method: "POST",
@@ -1313,23 +1421,40 @@ export default function App() {
                   playSfx("upgrade");
                   setPiPaymentStatus("success");
                   
+                  logTransaction({
+                    id: paymentId,
+                    status: "success"
+                  });
+
                   setTimeout(() => setPiPaymentStatus("idle"), 3000);
                 })
                 .catch((err) => {
                   console.warn("[Pi SDK] Server completion for Buy Xu failed:", err);
                   setPiPaymentStatus("error");
                   setPiPaymentError(t("checkoutProtocolError"));
+                  logTransaction({
+                    id: paymentId,
+                    status: "failed"
+                  });
                 });
             },
             onCancel: (paymentId: string) => {
               console.log(`[Pi SDK] Buy Xu payment ${paymentId} cancelled by user.`);
               setPiPaymentStatus("cancelled");
+              logTransaction({
+                id: paymentId,
+                status: "cancelled"
+              });
               setTimeout(() => setPiPaymentStatus("idle"), 2500);
             },
             onError: (error: Error, payment?: any) => {
               console.error("[Pi SDK] Buy Xu payment error:", error, payment);
               setPiPaymentStatus("error");
               setPiPaymentError(error?.message || t("checkoutProtocolError"));
+              logTransaction({
+                id: payment?.identifier || `err-${Date.now()}`,
+                status: "failed"
+              });
               setTimeout(() => setPiPaymentStatus("idle"), 4000);
             }
           }
@@ -1343,6 +1468,16 @@ export default function App() {
     } else {
       // Local/Sandbox Mode purchase of xu
       setPiPaymentStatus("creating");
+      const sandboxId = `sandbox-${Date.now()}`;
+      logTransaction({
+        id: sandboxId,
+        type: "deposit",
+        amountCoins,
+        piAmount,
+        status: "success",
+        timestamp: Date.now(),
+        memo: language === "vi" ? "Nạp Xu (Chế độ thử nghiệm local)" : "Sandbox Deposit"
+      });
       setTimeout(() => {
         setMetaGold((prev: number) => {
           const next = prev + amountCoins;
@@ -1410,6 +1545,19 @@ export default function App() {
 
         playSfx("upgrade");
         
+        logTransaction({
+          id: data.paymentId || `wd-${Date.now()}`,
+          type: "withdrawal",
+          amountCoins: amountCoins,
+          piAmount: piAmount,
+          status: "success",
+          timestamp: Date.now(),
+          txid: data.txid,
+          memo: data.simulated 
+            ? (language === "vi" ? `Rút Pi (Chế độ mô phỏng)` : `Simulated Withdrawal`)
+            : (language === "vi" ? `Rút Pi về ví thành công` : `Pi Wallet Withdrawal`)
+        });
+
         if (data.simulated) {
           setPiPaymentStatus("success");
           setPiPaymentError(t("simulateNoWalletSeed", { amount: piAmount }));
@@ -1429,6 +1577,17 @@ export default function App() {
       console.warn("[Pi SDK] Failed to sell xu:", err);
       setPiPaymentStatus("error");
       setPiPaymentError(err?.message || t("processSellError"));
+      
+      logTransaction({
+        id: `wd-err-${Date.now()}`,
+        type: "withdrawal",
+        amountCoins: amountCoins,
+        piAmount: piAmount,
+        status: "failed",
+        timestamp: Date.now(),
+        memo: err?.message || "Withdrawal Failed"
+      });
+
       setTimeout(() => setPiPaymentStatus("idle"), 4000);
     }
   };
@@ -2593,11 +2752,11 @@ export default function App() {
               </div>
 
               {/* Tab Selector */}
-              <div className="flex border-b border-brand-border mb-3 text-xs bg-slate-50 p-1 rounded-lg">
+              <div className="flex border-b border-brand-border mb-3 text-xs bg-slate-50 p-1 rounded-lg space-x-1">
                 <button
                   type="button"
                   onClick={() => setShopTab("upgrades")}
-                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[9px] rounded-md transition cursor-pointer ${
+                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
                     shopTab === "upgrades"
                       ? "bg-purple-600 text-white shadow-sm font-extrabold"
                       : "text-slate-600 hover:text-slate-900"
@@ -2608,13 +2767,24 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShopTab("exchange")}
-                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[9px] rounded-md transition cursor-pointer ${
+                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
                     shopTab === "exchange"
                       ? "bg-purple-600 text-white shadow-sm font-extrabold"
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   {t("piExchange")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShopTab("history")}
+                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
+                    shopTab === "history"
+                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {t("transactionHistory")}
                 </button>
               </div>
 
@@ -2688,7 +2858,7 @@ export default function App() {
                     );
                   })}
                 </div>
-              ) : (
+              ) : shopTab === "exchange" ? (
                 /* Pi Exchange Panel */
                 <div className="space-y-3.5 max-h-[190px] overflow-y-auto pr-1">
                   <div className="p-2 bg-purple-50 rounded-lg border border-purple-100 text-[9px] font-mono leading-normal text-purple-700">
@@ -2760,6 +2930,82 @@ export default function App() {
                     )}
                   </div>
                 </div>
+              ) : (
+                /* Transaction History Panel */
+                <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
+                  {transactions.length === 0 ? (
+                    <div className="p-4 text-center text-[10px] text-slate-400 font-mono">
+                      {t("noTransactions")}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 font-mono text-[10px]">
+                      {transactions.map((tx) => (
+                        <div key={tx.id} className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex flex-col space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className={`px-1 rounded text-[8px] font-bold uppercase ${
+                              tx.type === "deposit"
+                                ? "bg-purple-100 text-purple-700"
+                                : tx.type === "withdrawal"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}>
+                              {tx.type === "deposit"
+                                ? t("txTypeDeposit")
+                                : tx.type === "withdrawal"
+                                ? t("txTypeWithdrawal")
+                                : t("txTypeUpgrade")}
+                            </span>
+                            <span className="text-[8px] text-slate-400">
+                              {new Date(tx.timestamp).toLocaleString(language === "vi" ? "vi-VN" : "en-US", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                                day: "numeric",
+                                month: "numeric",
+                              })}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center text-[9px]">
+                            <span className="text-slate-600 font-sans leading-snug">{tx.memo || ""}</span>
+                            <span className="font-extrabold flex items-center space-x-1">
+                              <span className={tx.type === "withdrawal" ? "text-rose-500" : "text-emerald-500"}>
+                                {tx.type === "withdrawal" ? "-" : "+"}{tx.amountCoins}¢
+                              </span>
+                              <span className="text-slate-300">|</span>
+                              <span className="text-purple-600">
+                                {tx.piAmount}π
+                              </span>
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-[8px] border-t border-dashed border-slate-200 pt-1 mt-0.5">
+                            <span className="text-slate-400 font-mono truncate max-w-[140px]" title={tx.txid || tx.id}>
+                              ID: {tx.txid ? tx.txid.slice(0, 10) + "..." : tx.id.slice(0, 10) + "..."}
+                            </span>
+                            <span className={`font-bold uppercase ${
+                              tx.status === "success"
+                                ? "text-emerald-600"
+                                : tx.status === "pending"
+                                ? "text-amber-500 animate-pulse"
+                                : tx.status === "cancelled"
+                                ? "text-slate-400"
+                                : "text-rose-500"
+                            }`}>
+                              {tx.status === "success"
+                                ? t("txStatusSuccess")
+                                : tx.status === "pending"
+                                ? t("txStatusPending")
+                                : tx.status === "cancelled"
+                                ? t("txStatusCancelled")
+                                : t("txStatusFailed")}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -2787,14 +3033,30 @@ export default function App() {
               </div>
             )}
 
-            {/* System Clear Button */}
-            <div className="text-center mt-1">
+            {/* System Clear Button & Policies Footer */}
+            <div className="flex flex-col items-center space-y-2 mt-2 mb-1 border-t border-slate-100 pt-2.5">
               <button
                 onClick={resetSaveData}
                 className="text-[9px] text-brand-muted hover:text-rose-500 font-mono cursor-pointer transition underline uppercase tracking-wider"
               >
                 {t("clearSaveData")}
               </button>
+              
+              <div className="flex items-center space-x-2 text-[8px] text-slate-400 font-mono uppercase">
+                <button
+                  onClick={() => setShowPrivacyPolicy(true)}
+                  className="hover:text-purple-600 transition underline cursor-pointer"
+                >
+                  {t("privacyPolicyTitle")}
+                </button>
+                <span>•</span>
+                <button
+                  onClick={() => setShowTermsOfService(true)}
+                  className="hover:text-purple-600 transition underline cursor-pointer"
+                >
+                  {t("termsOfServiceTitle")}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2867,6 +3129,264 @@ export default function App() {
                 className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg cursor-pointer text-xs transition font-display uppercase tracking-wider"
               >
                 {t("acknowledgeProtocols")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            PRIVACY POLICY MODAL
+            ========================================== */}
+        {showPrivacyPolicy && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-brand-card border-2 border-brand-border rounded-xl p-5 w-full max-w-[380px] space-y-4 geo-shadow flex flex-col">
+              <div className="flex items-center space-x-2 text-brand-accent border-b border-brand-border pb-2">
+                <Lock className="w-5 h-5" />
+                <h3 className="text-sm font-bold tracking-tight text-slate-800 font-display uppercase">
+                  {t("privacyPolicyTitle")}
+                </h3>
+              </div>
+              
+              <div className="max-h-[240px] overflow-y-auto pr-1 text-[11px] leading-relaxed text-slate-600 font-sans space-y-3">
+                {language === "vi" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. Thu thập thông tin</p>
+                    <p>Ứng dụng trò chơi của chúng tôi chỉ lưu trữ cục bộ trên thiết bị của bạn tiến trình chơi, điểm số kỷ lục và lịch sử giao dịch. Nếu bạn đăng nhập bằng Ví Pi, chúng tôi sử dụng mã nhận dạng duy nhất (UID) ẩn danh từ Pi Network để đồng bộ hóa tài khoản.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Sử dụng thông tin</p>
+                    <p>Thông tin thu thập được sử dụng duy nhất cho mục đích vận hành trò chơi, xử lý các giao dịch Pi và cải thiện trải nghiệm người dùng. Chúng tôi cam kết không thu thập dữ liệu cá nhân nhạy cảm.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. Bảo mật giao dịch</p>
+                    <p>Mọi giao dịch thanh toán hoặc rút Pi đều được thực hiện bảo mật qua SDK Pi Network chính thức kết nối trực tiếp đến Blockchain Pi. Chúng tôi không bao giờ lưu trữ mật khẩu hoặc mã bảo mật cụm từ ví của bạn.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. Chia sẻ bên thứ ba</p>
+                    <p>Chúng tôi không bán, trao đổi hoặc chuyển giao dữ liệu của bạn cho bất kỳ bên thứ ba nào.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. Quyền kiểm soát dữ liệu</p>
+                    <p>Bạn có toàn quyền xóa mọi dữ liệu lưu trữ bằng cách bấm vào nút "Xóa dữ liệu" ở chân trang màn hình chính của trò chơi.</p>
+                  </>
+                ) : language === "zh" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. 信息收集</p>
+                    <p>我们的游戏应用仅在您的设备本地存储游戏进度、最高分和本地交易历史。如果您通过 Pi 钱包登录，我们将使用 Pi Network 的匿名唯一标识符（UID）来同步您的帐户。</p>
+                    
+                    <p className="font-semibold text-slate-700">2. 信息使用</p>
+                    <p>收集的信息仅用于运行游戏、处理 Pi 交易和改善用户体验。我们承诺不收集敏感的个人数据。</p>
+                    
+                    <p className="font-semibold text-slate-700">3. 交易安全</p>
+                    <p>所有 Pi 支付或提取交易均通过 Pi Network 官方 SDK 安全执行，直接连接到 Pi 区块链。我们绝不会存储您的钱包密码或私钥密语。</p>
+                    
+                    <p className="font-semibold text-slate-700">4. 第三方共享</p>
+                    <p>我们不会向任何第三方出售、交易或转让您的任何数据。</p>
+                    
+                    <p className="font-semibold text-slate-700">5. 数据控制权</p>
+                    <p>您拥有数据的完整控制权。您可以随时通过游戏主界面底部的“清除保存数据”按钮清除所有本地数据。</p>
+                  </>
+                ) : language === "es" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. Recopilación de Datos</p>
+                    <p>Nuestra aplicación de juego solo almacena localmente en su dispositivo su progreso, puntajes récord e historial de transacciones. Si inicia sesión con su Billetera Pi, utilizamos un identificador único (UID) anónimo de Pi Network para sincronizar su cuenta.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Uso de la Información</p>
+                    <p>La información recopilada se utiliza únicamente para el funcionamiento del juego, el procesamiento de transacciones de Pi y la mejora de la experiencia del usuario. Nos comprometemos a no recopilar datos personales sensibles.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. Seguridad de las Transacciones</p>
+                    <p>Todas las transacciones de pago o retiro de Pi se realizan de forma segura a través del SDK oficial de Pi Network, conectado directamente a la Blockchain de Pi. Nunca almacenamos su contraseña o frase de recuperación de billetera.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. Compartir con Terceros</p>
+                    <p>No vendemos, intercambiamos ni transferimos sus datos a terceros.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. Control de Datos</p>
+                    <p>Tiene control total sobre sus datos. Puede eliminar todos los datos locales en cualquier momento utilizando el botón "Borrar datos guardados" en el pie de página de la pantalla de inicio.</p>
+                  </>
+                ) : language === "ko" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. 정보 수집</p>
+                    <p>본 게임 애플리케이션은 게임 진행 상태, 최고 기록, 트랜잭션 내역 등을 기기 로컬에만 저장합니다. Pi 지갑으로 로그인하는 경우, Pi Network의 익명 고유 식별자(UID)를 사용하여 계정을 동기화합니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. 정보 사용</p>
+                    <p>수집된 정보는 게임의 원활한 운영, Pi 트랜잭션 처리, 사용자 경험 향상을 위한 목적으로만 사용됩니다. 민감한 개인정보는 일체 수집하지 않습니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. 거래 안전성</p>
+                    <p>모든 Pi 결제 및 출금 거래는 Pi Network 공식 SDK를 통해 Pi 블록체인에 직접 연결되어 안전하게 처리됩니다. 당사는 귀하의 지갑 비밀번호나 복구 비밀구절을 수집하거나 저장하지 않습니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. 제3자 제공</p>
+                    <p>당사는 수집된 사용자 데이터를 제3자에게 판매, 거래 또는 양도하지 않습니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. 데이터 제어권</p>
+                    <p>사용자는 자신의 데이터에 대한 전체 권한을 가집니다. 메인 화면 하단의 "저장 데이터 초기화" 버튼을 클릭하여 언제든지 로컬 데이터를 일괄 삭제할 수 있습니다.</p>
+                  </>
+                ) : language === "ja" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. 情報収集</p>
+                    <p>当ゲームアプリは、ゲームの進行状況、ハイスコア、および取引履歴をお客様のデバイスのローカルストレージにのみ保存します。Pi ウォレットでログインする場合、Pi Network の匿名の一意の識別子（UID）を使用してアカウントを同期します。</p>
+                    
+                    <p className="font-semibold text-slate-700">2. 情報の使用目的</p>
+                    <p>収集された情報は、ゲームの運営、Pi トランザクションの処理、およびユーザーエクスペリエンスの向上にのみ使用されます。機微な個人情報を収集することは一切ありません。</p>
+                    
+                    <p className="font-semibold text-slate-700">3. トランザクションの安全性</p>
+                    <p>すべての Pi 決済および出金処理は、Pi Network の公式 SDK を介して Pi ブロックチェーンに直接接続され、安全に実行されます。お客様のウォレットパスワードやパスフレーズを保存することは決してありません。</p>
+                    
+                    <p className="font-semibold text-slate-700">4. 第三者への開示</p>
+                    <p>当社は、お客様のデータを第三者に販売、取引、または譲渡することはありません。</p>
+                    
+                    <p className="font-semibold text-slate-700">5. データの制御権</p>
+                    <p>お客様は自身のデータに対して完全な権利を有します。メイン画面下部にある「セーブデータを削除」ボタンをクリックすることで、いつでもすべてのローカルデータを削除できます。</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-slate-700">1. Data Collection</p>
+                    <p>Our game application only stores your progress, high scores, and transaction records locally on your device (localStorage). If you log in with your Pi Wallet, we use an anonymous unique identifier (UID) from Pi Network to sync your account.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Use of Information</p>
+                    <p>The collected information is used solely to operate the game, process Pi transactions, and improve user experience. We commit to never collecting sensitive personal data.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. Transaction Security</p>
+                    <p>All Pi Network payment or withdrawal transactions are executed securely through the official Pi Network SDK, which connects directly to the Pi Blockchain. We never store your wallet password or passphrase.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. Third-Party Sharing</p>
+                    <p>We do not sell, trade, or transfer your data to any third parties.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. Data Control Rights</p>
+                    <p>You have full control over your data. You can delete all local save data at any time by clicking the "Clear Save Data" button in the footer of the home screen.</p>
+                  </>
+                )}
+              </div>
+              
+              <button
+                onClick={() => setShowPrivacyPolicy(false)}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer text-xs transition font-display uppercase tracking-wider border border-brand-border"
+              >
+                {t("closeLink")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            TERMS OF SERVICE MODAL
+            ========================================== */}
+        {showTermsOfService && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-brand-card border-2 border-brand-border rounded-xl p-5 w-full max-w-[380px] space-y-4 geo-shadow flex flex-col">
+              <div className="flex items-center space-x-2 text-brand-accent border-b border-brand-border pb-2">
+                <FileText className="w-5 h-5" />
+                <h3 className="text-sm font-bold tracking-tight text-slate-800 font-display uppercase">
+                  {t("termsOfServiceTitle")}
+                </h3>
+              </div>
+              
+              <div className="max-h-[240px] overflow-y-auto pr-1 text-[11px] leading-relaxed text-slate-600 font-sans space-y-3">
+                {language === "vi" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. Chấp thuận điều khoản</p>
+                    <p>Bằng việc truy cập hoặc chơi trò chơi này, bạn đồng ý tuân thủ các Điều khoản dịch vụ này cùng với tất cả các luật pháp hiện hành.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Giao dịch Pi Network</p>
+                    <p>Mọi giao dịch nạp hoặc rút đồng Pi (π) trong game đều tuân theo các nguyên tắc của Nhà phát triển Pi Network. Xu (¢) trong trò chơi là tiền ảo tiện ích và chỉ có giá trị sử dụng nội bộ để nâng cấp chỉ số hoặc các tính năng của trò chơi này, không có giá trị tiền tệ thực tế bên ngoài.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. Sử dụng hợp lý & Công bằng</p>
+                    <p>Người chơi không được phép can thiệp, sửa đổi mã nguồn, sử dụng phần mềm bên thứ ba (hack, cheat, bot) hoặc tận dụng bất kỳ lỗ hổng bảo mật nào để đạt lợi thế không công bằng trong game. Mọi hành vi vi phạm có thể dẫn đến việc khóa tài khoản hoặc hủy lịch sử giao dịch.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. Giới hạn trách nhiệm</p>
+                    <p>Trò chơi được cung cấp theo nguyên tắc "nguyên bản". Chúng tôi không chịu trách nhiệm cho các tổn thất dữ liệu do lỗi mạng Pi Network, sự cố thiết bị hoặc xóa bộ nhớ cache trình duyệt của người dùng.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. Thay đổi điều khoản</p>
+                    <p>Chúng tôi có quyền cập nhật các điều khoản dịch vụ này bất cứ lúc nào để phù hợp với quy định mới của nền tảng Pi Network.</p>
+                  </>
+                ) : language === "zh" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. 接受条款</p>
+                    <p>访问或游玩本游戏，即表示您同意遵守本服务条款及所有适用法律。</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Pi Network 交易</p>
+                    <p>游戏内的所有 Pi (π) 充值或提取交易均遵守 Pi Network 开发者指南。游戏内金币（¢）为虚拟道具，仅限本游戏内升级使用，在游戏外不具有任何实际货币价值。</p>
+                    
+                    <p className="font-semibold text-slate-700">3. 公平竞争</p>
+                    <p>玩家不得篡改游戏代码、使用第三方软件（外挂、作弊、辅助工具）或利用任何漏洞以获取不正当优势。任何违规行为可能导致帐户被冻结或交易历史被取消。</p>
+                    
+                    <p className="font-semibold text-slate-700">4. 免责声明</p>
+                    <p>本游戏按“现状”提供。我们对因 Pi Network 网络延迟、设备硬件问题或用户清理浏览器缓存导致的数据丢失不承担任何责任。</p>
+                    
+                    <p className="font-semibold text-slate-700">5. 条款修改</p>
+                    <p>我们保留随时更新本服务条款的权利，以符合 Pi Network 平台的最新政策要求。</p>
+                  </>
+                ) : language === "es" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. Aceptación de Términos</p>
+                    <p>Al acceder o jugar a este juego, usted acepta cumplir con estos Términos de Servicio y con todas las leyes aplicables.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Transacciones de Pi Network</p>
+                    <p>Cualquier transacción de depósito o retiro de Pi (π) dentro del juego sigue estrictamente las pautas de desarrollo de Pi Network. Las monedas virtuales (¢) son consumibles internos y solo sirven para mejoras de estadísticas dentro del juego, sin valor monetario real en el exterior.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. Juego Limpio</p>
+                    <p>No se permite a los usuarios piratear, modificar el código del juego, usar herramientas de terceros (hackeos, trampas, bots) o explotar errores del sistema para obtener ventajas injustas. Cualquier violación resultará en la suspensión del acceso.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. Limitación de Responsabilidad</p>
+                    <p>El juego se proporciona "tal cual". No nos hacemos responsables de pérdidas de datos resultantes de problemas de red en Pi Network, fallos del dispositivo o borrado del caché de navegación del usuario.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. Modificación de Términos</p>
+                    <p>Nos reservamos el derecho de actualizar estos términos en cualquier momento para mantener la conformidad con las pautas de Pi Network.</p>
+                  </>
+                ) : language === "ko" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. 약관 동의</p>
+                    <p>본 게임을 이용하거나 접속함으로써 귀하는 본 이용약관 및 모든 관련 법령을 준수하는 데 동의하게 됩니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Pi Network 거래 규칙</p>
+                    <p>게임 내 모든 Pi (π) 입금 및 출금 거래는 Pi Network 개발자 가이드라인을 엄격히 준수합니다. 게임 내 가상 코인(¢)은 전적으로 내부 아이템 강화용 유틸리티이며, 게임 외부에서는 실제 금전적 가치가 전혀 없습니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. 공정한 게임 이용</p>
+                    <p>플레이어는 게임 코드를 변조하거나 제3자 비인가 프로그램(핵, 치트, 매크로 등)을 사용할 수 없으며, 불공정한 이득을 취하기 위해 시스템 취약점을 악용해서는 안 됩니다. 위반 시 계정 이용 제한 및 거래 내역 무효화 처리가 될 수 있습니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. 면책 사항</p>
+                    <p>본 서비스는 "있는 그대로" 제공됩니다. Pi Network 자체 네트워크 장애, 사용자 기기 이상 또는 브라우저 캐시 삭제로 인한 데이터 손실에 대해 당사는 일체 책임을 지지 않습니다.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. 약관의 변경</p>
+                    <p>당사는 Pi Network 플랫폼의 가이드라인 변경에 맞추어 본 약관을 언제든지 변경할 수 있는 권리를 보유합니다.</p>
+                  </>
+                ) : language === "ja" ? (
+                  <>
+                    <p className="font-semibold text-slate-700">1. 規約への同意</p>
+                    <p>本ゲームにアクセス、またはプレイすることにより、お客様は本利用規約および関連するすべての法令を遵守することに同意したものとみなされます。</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Pi Network 取引ルール</p>
+                    <p>ゲーム内でのすべての Pi (π) 入出金取引は、Pi Network デベロッパーガイドラインに準拠します。ゲーム内の仮想コイン（¢）はゲーム内専用のユーティリティであり、外部において実際の金銭的価値は一切有しません。</p>
+                    
+                    <p className="font-semibold text-slate-700">3. 公平なプレイの維持</p>
+                    <p>ゲームコードの改ざん、非公式なサードパーティ製ツール（チート、自動マクロなど）の利用、または不当な利益を得るためのバグの悪用は固く禁止されています。違反が確認された場合、アカウントの利用停止などの措置をとることがあります。</p>
+                    
+                    <p className="font-semibold text-slate-700">4. 免責事項</p>
+                    <p>当ゲームは「現状有姿」で提供されます。Pi Network 自体の通信障害、デバイスの不具合、またはユーザーによるブラウザキャッシュの削除に伴うデータ損失について、当社は一切の責任を負いません。</p>
+                    
+                    <p className="font-semibold text-slate-700">5. 利用規約の改定</p>
+                    <p>当社は、Pi Network プラットフォームのポリシー変更に合致させるため、本規約をいつでも改定する権利を有します。</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-slate-700">1. Acceptance of Terms</p>
+                    <p>By accessing or playing this game, you agree to comply with these Terms of Service and all applicable laws.</p>
+                    
+                    <p className="font-semibold text-slate-700">2. Pi Network Transactions</p>
+                    <p>All in-game Pi Network deposit or withdrawal transactions adhere strictly to the Pi Network developer guidelines. Virtual coins (¢) are purely in-game utility currencies used for stat upgrades and have no real-world monetary value outside this game.</p>
+                    
+                    <p className="font-semibold text-slate-700">3. Fair Play</p>
+                    <p>Users are strictly prohibited from hacking, modifying the game code, using third-party tools (cheats, bots, automation), or exploiting system vulnerabilities to gain unfair advantages. Violators are subject to suspension.</p>
+                    
+                    <p className="font-semibold text-slate-700">4. Limitation of Liability</p>
+                    <p>The game is provided on an "as-is" basis. We are not liable for any data loss resulting from Pi Network outages, user device issues, or browser cache clearing.</p>
+                    
+                    <p className="font-semibold text-slate-700">5. Modifications</p>
+                    <p>We reserve the right to update these terms at any time to align with updated Pi Network platform developer requirements.</p>
+                  </>
+                )}
+              </div>
+              
+              <button
+                onClick={() => setShowTermsOfService(false)}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer text-xs transition font-display uppercase tracking-wider border border-brand-border"
+              >
+                {t("closeLink")}
               </button>
             </div>
           </div>

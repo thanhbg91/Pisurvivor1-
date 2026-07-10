@@ -163,6 +163,24 @@ export interface TranslationSet {
   invalidServerResponse: string;
   processSellError: string;
   errorPrefix: string;
+
+  // Transaction History
+  transactionHistory: string;
+  noTransactions: string;
+  txDate: string;
+  txType: string;
+  txAmount: string;
+  txPi: string;
+  txStatus: string;
+  txTypeDeposit: string;
+  txTypeWithdrawal: string;
+  txTypeUpgrade: string;
+  txStatusSuccess: string;
+  txStatusPending: string;
+  txStatusFailed: string;
+  txStatusCancelled: string;
+  privacyPolicyTitle: string;
+  termsOfServiceTitle: string;
 }
 
 export const languages: { code: Language; name: string; flag: string }[] = [
@@ -309,7 +327,23 @@ export const translations: Record<Language, TranslationSet> = {
     simulateNoWalletSeed: "[SIMULATION] {amount} π (PI_WALLET_SEED is not configured on the server)",
     invalidServerResponse: "Invalid response from server.",
     processSellError: "Error processing sell transaction.",
-    errorPrefix: "Error: "
+    errorPrefix: "Error: ",
+    transactionHistory: "Transaction History",
+    noTransactions: "No transaction history found.",
+    txDate: "Date",
+    txType: "Type",
+    txAmount: "Coins",
+    txPi: "Pi (π)",
+    txStatus: "Status",
+    txTypeDeposit: "Deposit",
+    txTypeWithdrawal: "Withdrawal",
+    txTypeUpgrade: "Upgrade",
+    txStatusSuccess: "Success",
+    txStatusPending: "Pending",
+    txStatusFailed: "Failed",
+    txStatusCancelled: "Cancelled",
+    privacyPolicyTitle: "Privacy Policy",
+    termsOfServiceTitle: "Terms of Service"
   },
   vi: {
     appSubtitle: "Sinh Tồn Roguelike // V1.4",
@@ -445,7 +479,23 @@ export const translations: Record<Language, TranslationSet> = {
     simulateNoWalletSeed: "[MÔ PHỎNG] {amount} π (Chưa cấu hình PI_WALLET_SEED trên Server)",
     invalidServerResponse: "Phản hồi không hợp lệ từ máy chủ.",
     processSellError: "Lỗi xử lý giao dịch bán xu.",
-    errorPrefix: "Lỗi: "
+    errorPrefix: "Lỗi: ",
+    transactionHistory: "Lịch sử nạp, rút pi",
+    noTransactions: "Không tìm thấy lịch sử giao dịch nào.",
+    txDate: "Thời gian",
+    txType: "Loại giao dịch",
+    txAmount: "Số lượng xu",
+    txPi: "Số lượng Pi (π)",
+    txStatus: "Trạng thái",
+    txTypeDeposit: "Nạp Xu",
+    txTypeWithdrawal: "Rút Pi",
+    txTypeUpgrade: "Nâng cấp",
+    txStatusSuccess: "Thành công",
+    txStatusPending: "Đang xử lý",
+    txStatusFailed: "Thất bại",
+    txStatusCancelled: "Đã hủy",
+    privacyPolicyTitle: "Chính sách bảo mật",
+    termsOfServiceTitle: "Điều khoản dịch vụ"
   },
   zh: {
     appSubtitle: "休闲 Roguelike 生存 // V1.4",
@@ -581,7 +631,23 @@ export const translations: Record<Language, TranslationSet> = {
     simulateNoWalletSeed: "[模拟] {amount} π (服务器上未配置 PI_WALLET_SEED)",
     invalidServerResponse: "服务器返回了无效的响应。",
     processSellError: "处理提取金币时发生错误。",
-    errorPrefix: "错误: "
+    errorPrefix: "错误: ",
+    transactionHistory: "充值与提取历史",
+    noTransactions: "暂无交易历史记录。",
+    txDate: "时间",
+    txType: "类型",
+    txAmount: "金币",
+    txPi: "Pi (π)",
+    txStatus: "状态",
+    txTypeDeposit: "充值",
+    txTypeWithdrawal: "提取",
+    txTypeUpgrade: "升级",
+    txStatusSuccess: "成功",
+    txStatusPending: "进行中",
+    txStatusFailed: "失败",
+    txStatusCancelled: "已取消",
+    privacyPolicyTitle: "隐私政策",
+    termsOfServiceTitle: "服务条款"
   },
   es: {
     appSubtitle: "Supervivencia Casual Roguelike // V1.4",
@@ -717,7 +783,23 @@ export const translations: Record<Language, TranslationSet> = {
     simulateNoWalletSeed: "[SIMULACIÓN] {amount} π (PI_WALLET_SEED no está configurado en el servidor)",
     invalidServerResponse: "Respuesta no válida del servidor.",
     processSellError: "Error al procesar la venta de monedas.",
-    errorPrefix: "Error: "
+    errorPrefix: "Error: ",
+    transactionHistory: "Historial de Transacciones",
+    noTransactions: "No se encontró historial de transacciones.",
+    txDate: "Fecha",
+    txType: "Tipo",
+    txAmount: "Monedas",
+    txPi: "Pi (π)",
+    txStatus: "Estado",
+    txTypeDeposit: "Depósito",
+    txTypeWithdrawal: "Retiro",
+    txTypeUpgrade: "Mejora",
+    txStatusSuccess: "Éxito",
+    txStatusPending: "Pendiente",
+    txStatusFailed: "Fallido",
+    txStatusCancelled: "Cancelado",
+    privacyPolicyTitle: "Política de Privacidad",
+    termsOfServiceTitle: "Términos de Servicio"
   },
   ko: {
     appSubtitle: "캐주얼 로그라이크 서바이벌 // V1.4",
@@ -853,7 +935,23 @@ export const translations: Record<Language, TranslationSet> = {
     simulateNoWalletSeed: "[시뮬레이션] {amount} π (서버에 PI_WALLET_SEED가 설정되어 있지 않습니다)",
     invalidServerResponse: "서버가 잘못된 응답을 반환했습니다.",
     processSellError: "코인 출금 처리 중 오류가 발생했습니다.",
-    errorPrefix: "오류: "
+    errorPrefix: "오류: ",
+    transactionHistory: "입출금 내역",
+    noTransactions: "거래 내역이 존재하지 않습니다.",
+    txDate: "일시",
+    txType: "구분",
+    txAmount: "코인",
+    txPi: "Pi (π)",
+    txStatus: "상태",
+    txTypeDeposit: "입금 (충전)",
+    txTypeWithdrawal: "출금 (환전)",
+    txTypeUpgrade: "업그레이드",
+    txStatusSuccess: "성공",
+    txStatusPending: "대기중",
+    txStatusFailed: "실패",
+    txStatusCancelled: "취소됨",
+    privacyPolicyTitle: "개인정보처리방침",
+    termsOfServiceTitle: "이용약관"
   },
   ja: {
     appSubtitle: "カジュアル・ローグライク生存劇 // V1.4",
@@ -989,6 +1087,22 @@ export const translations: Record<Language, TranslationSet> = {
     simulateNoWalletSeed: "[シミュレーション] {amount} π (サーバーに PI_WALLET_SEED が設定されていません)",
     invalidServerResponse: "サーバーから無効なレスポンスが返されました。",
     processSellError: "コイン出金処理中にエラーが発生しました。",
-    errorPrefix: "エラー: "
+    errorPrefix: "エラー: ",
+    transactionHistory: "入出金履歴",
+    noTransactions: "取引履歴が見つかりませんでした。",
+    txDate: "日時",
+    txType: "区分",
+    txAmount: "コイン",
+    txPi: "Pi (π)",
+    txStatus: "ステータス",
+    txTypeDeposit: "チャージ (入金)",
+    txTypeWithdrawal: "出金 (売却)",
+    txTypeUpgrade: "アップグレード",
+    txStatusSuccess: "成功",
+    txStatusPending: "処理中",
+    txStatusFailed: "失敗",
+    txStatusCancelled: "キャンセル",
+    privacyPolicyTitle: "プライバシーポリシー",
+    termsOfServiceTitle: "利用規約"
   }
 };
