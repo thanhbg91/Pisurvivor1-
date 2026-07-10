@@ -197,12 +197,73 @@ app.post("/api/pi/sell", async (req, res) => {
         }
       }
 
-      console.log(`[Pi Backend] PI_WALLET_SEED is configured. Proceeding with real blockchain signing of App-to-User payout...`);
+      console.log(`[Pi Backend] PI_WALLET_SEED is configured. Analyzing payment state...`);
+      console.log(`[Pi Backend] Payment ID: ${paymentResponse.id}`);
+      console.log(`[Pi Backend] Payment status:`, JSON.stringify(paymentResponse.status || {}));
+      console.log(`[Pi Backend] Payment keys:`, Object.keys(paymentResponse));
+
       const paymentId = paymentResponse.id;
       const txEnvelope = paymentResponse.network_tx_envelope;
       
+      // 1. Check if the payment is already fully completed on the blockchain/developer server
+      const isCompleted = paymentResponse.status && (
+        paymentResponse.status.developer_completed === true ||
+        paymentResponse.status.blockchain_committed === true
+      );
+
+      if (isCompleted) {
+        console.log(`[Pi Backend] Payment ${paymentId} is already completed. Returning success.`);
+        return res.json({
+          success: true,
+          simulated: false,
+          txid: paymentResponse.transaction?.txid || "unknown",
+          payment: paymentResponse
+        });
+      }
+
+      // 2. Check if the payment is already submitted or verified (meaning transaction exists)
+      const existingTxid = paymentResponse.transaction?.txid;
+      if (existingTxid && !txEnvelope) {
+        console.log(`[Pi Backend] Payment ${paymentId} has already been submitted to the blockchain (TXID: ${existingTxid}) but not yet completed. Completing it now...`);
+        try {
+          const completeResponse = await callPiApi(`/v2/payments/${paymentId}/complete`, "POST", { txid: existingTxid });
+          console.log(`[Pi Backend] Payment ${paymentId} completed successfully on callback:`, completeResponse);
+          return res.json({
+            success: true,
+            simulated: false,
+            txid: existingTxid,
+            payment: completeResponse
+          });
+        } catch (completeErr) {
+          console.error(`[Pi Backend] Error trying to complete already-submitted transaction:`, completeErr);
+          throw new Error(`Giao dịch đã được gửi lên Blockchain (TXID: ${existingTxid}) nhưng không thể hoàn tất: ${completeErr.message}`);
+        }
+      }
+
+      // 3. Handle cases where network_tx_envelope is missing
       if (!txEnvelope) {
-        throw new Error("Không tìm thấy network_tx_envelope của giao dịch.");
+        // Identify if it is a User-to-App payment instead of App-to-User
+        // In User-to-App payment, the recipient is the app/developer, and the sender is the user.
+        // A2U payment is from app/developer to user.
+        const isUserToApp = paymentResponse.recipient === "app" || 
+                            (paymentResponse.recipient && !paymentResponse.recipient.includes(uid)) ||
+                            paymentResponse.direction === "user_to_app";
+
+        if (isUserToApp) {
+          throw new Error(
+            `Phát hiện một giao dịch NẠP Pi (User-to-App) chưa hoàn tất (ID: ${paymentId}, Trạng thái: ${JSON.stringify(paymentResponse.status || {})}). ` +
+            `Vui lòng quay lại màn hình chính, hệ thống sẽ tự động đồng bộ và hoàn tất giao dịch nạp đó trước khi bạn có thể thực hiện giao dịch Rút Pi này.`
+          );
+        }
+
+        // If it's not a User-to-App payment, explain what happened and show the full response for troubleshooting.
+        throw new Error(
+          `Không tìm thấy 'network_tx_envelope' từ Pi Platform API. ` +
+          `Điều này có nghĩa là Pi Network chưa tạo được bản nháp giao dịch blockchain. ` +
+          `Vui lòng kiểm tra: 1) Số dư ví Developer của bạn có đủ Pi không? 2) Cấu hình ví Developer đã chính xác chưa? ` +
+          `[Chi tiết trạng thái: ${JSON.stringify(paymentResponse.status || {})}] ` +
+          `[Dữ liệu giao dịch: ${JSON.stringify(paymentResponse)}]`
+        );
       }
       
       const passphrase = process.env.VITE_PI_SANDBOX !== "false" ? "Pi Testnet" : "Pi Network";
