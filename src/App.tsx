@@ -97,6 +97,7 @@ interface PiTransaction {
   timestamp: number;
   txid?: string;
   memo?: string;
+  simulated?: boolean;
 }
 
 const aiTranslations: Record<string, { title: string; intensity: string; playstyle: string; status: string; activityScore: string; bonusLabel: string }> = {
@@ -219,6 +220,26 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 0;
   });
 
+  // Daily grind gold limit to protect economic balance from excessive cày chay (free-to-play grinding)
+  const DAILY_GRIND_LIMIT = 150;
+  const SESSION_GOLD_LIMIT = 35;
+
+  const [dailyGrindGold, setDailyGrindGold] = useState(() => {
+    try {
+      const today = new Date().toDateString();
+      const saved = localStorage.getItem("pioneer_daily_grind_gold");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.date === today) {
+          return Number(parsed.amount) || 0;
+        }
+      }
+    } catch (e) {
+      console.error("[Economy] Failed to load daily grind tracking:", e);
+    }
+    return 0;
+  });
+
   const [shopUpgrades, setShopUpgrades] = useState(() => {
     const saved = localStorage.getItem("pioneer_shop_upgrades");
     return saved
@@ -290,8 +311,16 @@ export default function App() {
       const existingIdx = prev.findIndex((t) => t.id === tx.id);
       let next: PiTransaction[];
       if (existingIdx > -1) {
-        next = [...prev];
-        next[existingIdx] = { ...next[existingIdx], ...tx } as PiTransaction;
+        const existingTx = prev[existingIdx];
+        if (existingTx.status === "success" && tx.status && tx.status !== "success") {
+          console.log(`[Pi SDK] Ignoring status downgrade for transaction ${tx.id} from success to ${tx.status}`);
+          const updatedTx = { ...existingTx, ...tx, status: existingTx.status, simulated: existingTx.simulated || tx.simulated };
+          next = [...prev];
+          next[existingIdx] = updatedTx as PiTransaction;
+        } else {
+          next = [...prev];
+          next[existingIdx] = { ...next[existingIdx], ...tx } as PiTransaction;
+        }
       } else {
         const newTx: PiTransaction = {
           id: tx.id || `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -301,7 +330,8 @@ export default function App() {
           status: tx.status || "pending",
           timestamp: tx.timestamp || Date.now(),
           txid: tx.txid,
-          memo: tx.memo
+          memo: tx.memo,
+          simulated: tx.simulated
         };
         next = [newTx, ...prev];
       }
@@ -1048,6 +1078,22 @@ export default function App() {
       setFinalStats((prev) => {
         const addedGold = prev.gold;
         const doubledGold = prev.gold * 2;
+        
+        // Track the doubled gold towards the daily grind limit
+        setDailyGrindGold((current) => {
+          const next = current + addedGold;
+          try {
+            const today = new Date().toDateString();
+            localStorage.setItem("pioneer_daily_grind_gold", JSON.stringify({
+              date: today,
+              amount: next
+            }));
+          } catch (e) {
+            console.error(e);
+          }
+          return next;
+        });
+
         // Credit the double gold permanently to currency
         setMetaGold((g) => {
           const next = g + addedGold;
@@ -1592,6 +1638,7 @@ export default function App() {
         piAmount,
         status: "success",
         timestamp: Date.now(),
+        simulated: true,
         memo: language === "vi" ? "Nạp Xu (Chế độ thử nghiệm local)" : "Sandbox Deposit"
       });
       setTimeout(() => {
@@ -1669,6 +1716,7 @@ export default function App() {
           status: "success",
           timestamp: Date.now(),
           txid: data.txid,
+          simulated: !!data.simulated,
           memo: data.simulated 
             ? (language === "vi" ? `Rút Pi (Chế độ mô phỏng)` : `Simulated Withdrawal`)
             : (language === "vi" ? `Rút Pi về ví thành công` : `Pi Wallet Withdrawal`)
@@ -2077,14 +2125,29 @@ export default function App() {
             });
           }
 
-          // Randomize dropping Gold Coins or XP Orbs
+          // Randomize dropping Gold Coins or XP Orbs with strict economy limits
           const isBoss = e.type === "boss";
-          const isGold = isBoss ? true : Math.random() < 0.18; // 18% gold chance from normal targets
+          
+          // Check if player has reached the game session or daily grind cap
+          const reachedSessionCap = engine.player.gold >= SESSION_GOLD_LIMIT;
+          const reachedDailyCap = dailyGrindGold + engine.player.gold >= DAILY_GRIND_LIMIT;
+          
+          // Drop rate for normal targets is reduced to 4% (down from 18%) to balance the economy.
+          // Gold is only allowed to drop if we haven't hit the session/daily cap.
+          const isGold = !reachedSessionCap && !reachedDailyCap && (isBoss ? true : Math.random() < 0.04);
 
-          // High difficulty rewards: Scale the gold/XP amount if AI intensity is high!
-          let dropAmount = isBoss ? 15 : e.points;
+          // High difficulty rewards: Scale the amount if AI intensity is high.
+          // Boss gold drops are calibrated to 8 (down from 15) for sustainable economic balance.
+          let dropAmount = isBoss ? 8 : e.points;
           if (engine.aiDirector.intensity > 1.1) {
             dropAmount = Math.ceil(dropAmount * engine.aiDirector.intensity);
+          }
+
+          // If it is a gold item, cap its value to the remaining session or daily limit so they cannot overshoot
+          if (isGold) {
+            const remainingSession = Math.max(1, SESSION_GOLD_LIMIT - engine.player.gold);
+            const remainingDaily = Math.max(1, DAILY_GRIND_LIMIT - (dailyGrindGold + engine.player.gold));
+            dropAmount = Math.min(dropAmount, remainingSession, remainingDaily);
           }
 
           engine.items.push({
@@ -2318,6 +2381,22 @@ export default function App() {
         playSfx("gameover");
 
         const earnedGold = engine.player.gold;
+
+        // Track the daily grind gold permanently
+        setDailyGrindGold((current) => {
+          const next = current + earnedGold;
+          try {
+            const today = new Date().toDateString();
+            localStorage.setItem("pioneer_daily_grind_gold", JSON.stringify({
+              date: today,
+              amount: next
+            }));
+          } catch (e) {
+            console.error(e);
+          }
+          return next;
+        });
+
         // Credit meta gold permanently
         setMetaGold((g) => {
           const next = g + earnedGold;
@@ -3191,6 +3270,24 @@ export default function App() {
               ) : shopTab === "exchange" ? (
                 /* Pi Exchange Panel */
                 <div className="space-y-3.5 max-h-[190px] overflow-y-auto pr-1">
+                  {/* Premium daily grind economy HUD */}
+                  <div className="p-2 bg-slate-100 rounded-lg border border-slate-200 text-[9px] font-mono leading-normal text-slate-700 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-slate-800">
+                      <span>
+                        {language === "vi" ? "HẠN MỨC CÀY CHAY HÀNG NGÀY:" : "DAILY GRIND CAP:"}
+                      </span>
+                      <span className={dailyGrindGold >= DAILY_GRIND_LIMIT ? "text-red-500 font-extrabold" : "text-emerald-600"}>
+                        {dailyGrindGold}/{DAILY_GRIND_LIMIT} ¢
+                      </span>
+                    </div>
+                    <div className="text-[7.5px] text-slate-500 leading-normal">
+                      {language === "vi" 
+                        ? "Để duy trì cán cân kinh tế, xu vàng từ việc tiêu diệt quái vật bị giới hạn mỗi ngày. Hãy nạp thêm Pi để quy đổi xu không giới hạn!"
+                        : "To sustain economic balance, coins gained from gameplay are capped daily. Deposit Pi for unlimited coin acquisition!"
+                      }
+                    </div>
+                  </div>
+
                   <div className="p-2 bg-purple-50 rounded-lg border border-purple-100 text-[9px] font-mono leading-normal text-purple-700">
                     <span className="font-extrabold text-purple-800 uppercase block mb-1">{t("decentralizedExchange")}</span>
                     {t("depositRate")}<br />
@@ -3317,7 +3414,9 @@ export default function App() {
                               ID: {tx.txid ? tx.txid.slice(0, 10) + "..." : tx.id.slice(0, 10) + "..."}
                             </span>
                             <span className={`font-bold uppercase ${
-                              tx.status === "success"
+                              tx.simulated
+                                ? "text-amber-500 font-extrabold"
+                                : tx.status === "success"
                                 ? "text-emerald-600"
                                 : tx.status === "pending"
                                 ? "text-amber-500 animate-pulse"
@@ -3325,7 +3424,9 @@ export default function App() {
                                 ? "text-slate-400"
                                 : "text-rose-500"
                             }`}>
-                              {tx.status === "success"
+                              {tx.simulated
+                                ? (language === "vi" ? "MÔ PHỎNG" : "SIMULATED")
+                                : tx.status === "success"
                                 ? t("txStatusSuccess")
                                 : tx.status === "pending"
                                 ? t("txStatusPending")
@@ -3787,89 +3888,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Floating AI Adaptive Director HUD Panel */}
-        {gameState === "PLAYING" && (
-          <div className="absolute top-[96px] right-4 z-20 pointer-events-none flex justify-end animate-fade-in">
-            <div className="bg-slate-950/85 border border-indigo-500/30 backdrop-blur-md px-3 py-2 rounded-xl flex flex-col space-y-1 pointer-events-auto max-w-[170px] geo-shadow-sm transition-all duration-300">
-              <div className="flex items-center space-x-1.5 justify-between">
-                <div className="flex items-center space-x-1">
-                  <Activity className="w-3.5 h-3.5 text-indigo-400 animate-pulse shrink-0" />
-                  <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-200">
-                    {aiTranslations[language]?.title || aiTranslations["en"].title}
-                  </span>
-                </div>
-                <div className="relative flex h-2 w-2 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                </div>
-              </div>
-
-              {/* Intensity bar / multiplier */}
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-[8px] text-slate-400 font-mono uppercase">
-                  {aiTranslations[language]?.intensity || aiTranslations["en"].intensity}
-                </span>
-                <span className={`text-[10px] font-mono font-bold ${
-                  gameStats.aiIntensity > 1.2 ? "text-amber-400" : gameStats.aiIntensity < 0.8 ? "text-emerald-400" : "text-slate-200"
-                }`}>
-                  {gameStats.aiIntensity.toFixed(2)}x
-                </span>
-              </div>
-
-              {/* Intensity visualization bar */}
-              <div className="w-full h-1 bg-slate-900 border border-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full transition-all duration-500 ${
-                    gameStats.aiIntensity > 1.2 ? "bg-amber-400" : gameStats.aiIntensity < 0.8 ? "bg-emerald-400" : "bg-indigo-500"
-                  }`}
-                  style={{ width: `${Math.min(100, Math.max(0, (gameStats.aiIntensity / 2.0) * 100))}%` }}
-                />
-              </div>
-
-              {/* Playstyle profile */}
-              <div className="flex items-center justify-between text-[8px] text-slate-400 pt-1.5">
-                <span className="font-mono uppercase">
-                  {aiTranslations[language]?.playstyle || aiTranslations["en"].playstyle}
-                </span>
-                <span className="font-bold text-slate-300 truncate max-w-[85px] text-[8.5px]">
-                  {gameStats.aiPlaystyle}
-                </span>
-              </div>
-
-              {/* Adjustment reason / AI status */}
-              <div className="flex flex-col text-[8px] text-slate-400 bg-slate-900/60 p-1 rounded border border-slate-900 mt-1">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono uppercase text-[7px] text-slate-500">
-                    {aiTranslations[language]?.status || aiTranslations["en"].status}
-                  </span>
-                  <span className="text-[7.5px] font-bold text-indigo-400 tracking-wide font-mono">
-                    {gameStats.aiAdjustment}
-                  </span>
-                </div>
-              </div>
-
-              {/* Activity score */}
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-[8px] text-slate-400 font-mono uppercase">
-                  {aiTranslations[language]?.activityScore || aiTranslations["en"].activityScore}
-                </span>
-                <span className="text-[8px] font-mono font-bold text-indigo-300">
-                  {gameStats.aiActivityScore}%
-                </span>
-              </div>
-
-              {/* High difficulty bonus badge */}
-              {gameStats.aiIntensity > 1.1 && (
-                <div className="mt-1 px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded flex items-center justify-center space-x-1 animate-pulse">
-                  <Flame className="w-2.5 h-2.5 text-amber-500 fill-current shrink-0" />
-                  <span className="text-[7.5px] font-mono font-bold text-amber-400 uppercase tracking-tight">
-                    {aiTranslations[language]?.bonusLabel || aiTranslations["en"].bonusLabel}: +{Math.round((gameStats.aiIntensity - 1.0) * 100)}%
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Floating AI Adaptive Director HUD Panel runs hidden in the background per user experience request */}
 
         {/* Dynamic Interactive Game Play Canvas Element */}
         {gameState === "PLAYING" && (
@@ -3990,6 +4009,21 @@ export default function App() {
                   </span>
                   <span className="text-brand-accent font-mono text-sm font-bold">{finalStats.gold} ¢</span>
                 </div>
+
+                {finalStats.gold >= SESSION_GOLD_LIMIT && (
+                  <div className="text-[8.5px] leading-tight text-amber-600 font-mono text-center bg-amber-500/5 border border-amber-500/10 p-2 rounded-lg mt-2">
+                    {language === "vi"
+                      ? "⚠️ Đã chạm hạn mức xu tối đa nhận được trong một trận đấu!"
+                      : "⚠️ Match coin limit reached for this session!"}
+                  </div>
+                )}
+                {dailyGrindGold >= DAILY_GRIND_LIMIT && (
+                  <div className="text-[8.5px] leading-tight text-red-500 font-mono text-center bg-red-500/5 border border-red-500/10 p-2 rounded-lg mt-2">
+                    {language === "vi"
+                      ? "🚨 Đã chạm hạn mức cày xu tối đa hàng ngày (150 xu). Vui lòng quay lại vào ngày mai!"
+                      : "🚨 Daily grind limit reached (150 coins). Please return tomorrow!"}
+                  </div>
+                )}
               </div>
             </div>
 
