@@ -479,7 +479,7 @@ export default function App() {
     let name = "";
     let statType: "damage" | "health" | "speed" | "regen" | "magnet" = "damage";
     let value = 0;
-    let sellPrice = 10;
+    let sellPrice = 1000;
 
     if (type === "weapon") {
       const weaponNames = {
@@ -496,7 +496,7 @@ export default function App() {
       else if (rarity === "epic") value = Math.floor(21 + Math.random() * 15); // +21% to +35%
       else value = Math.floor(36 + Math.random() * 25); // +36% to +60%
       
-      sellPrice = rarity === "common" ? 15 : rarity === "rare" ? 30 : rarity === "epic" ? 75 : 180;
+      sellPrice = rarity === "common" ? 1500 : rarity === "rare" ? 3000 : rarity === "epic" ? 7500 : 18000;
     } else if (type === "armor") {
       const armorNames = {
         common: ["Áo Da Thám Hiểm", "Giáp Sợi Carbon", "Lá Chắn Từ Trường Nhẹ"],
@@ -519,7 +519,7 @@ export default function App() {
         else value = parseFloat((1.51 + Math.random() * 1.5).toFixed(2));
       }
       
-      sellPrice = rarity === "common" ? 12 : rarity === "rare" ? 25 : rarity === "epic" ? 65 : 150;
+      sellPrice = rarity === "common" ? 1200 : rarity === "rare" ? 2500 : rarity === "epic" ? 6500 : 15000;
     } else {
       const accessoryNames = {
         common: ["Vòng Đeo Chân Động Cơ", "Nhẫn Nam Châm Sơ Cấp", "Găng Tay Tiện Ích"],
@@ -542,7 +542,7 @@ export default function App() {
         else value = Math.floor(101 + Math.random() * 100);
       }
       
-      sellPrice = rarity === "common" ? 10 : rarity === "rare" ? 22 : rarity === "epic" ? 55 : 130;
+      sellPrice = rarity === "common" ? 1000 : rarity === "rare" ? 2200 : rarity === "epic" ? 5500 : 13000;
     }
 
     sellPrice = Math.floor(sellPrice * (0.9 + Math.random() * 0.2));
@@ -572,7 +572,9 @@ export default function App() {
     });
 
     setTimeout(() => {
-      const coinReward = Math.floor(10 + Math.random() * 16); // guarantee 10 - 25 gold coins
+      // Ad impression generates 1,000 coins (0.001 Pi equivalent).
+      // Gift box reward must be strictly lower than ad impression value (e.g., 400 - 800 gold coins).
+      const coinReward = Math.floor(400 + Math.random() * 401); // guarantee 400 - 800 gold coins (average 600)
       let itemReward: any = null;
       if (Math.random() < 0.35) { // 35% chance to roll item
         itemReward = generateRandomEquipment();
@@ -627,32 +629,6 @@ export default function App() {
       localStorage.removeItem("pioneer_equipped_accessory");
     }
     playSfx("hurt");
-  };
-
-  const handleSellToMerchant = (item: any) => {
-    const isWpnEquipped = equippedWeapon?.id === item.id;
-    const isArmEquipped = equippedArmor?.id === item.id;
-    const isAccEquipped = equippedAccessory?.id === item.id;
-
-    if (isWpnEquipped || isArmEquipped || isAccEquipped) {
-      alert(language === "vi" ? "Vui lòng tháo trang bị trước khi bán!" : "Please unequip the item before selling!");
-      return;
-    }
-
-    const price = item.sellPrice;
-    setMetaGold((prev) => {
-      const next = prev + price;
-      localStorage.setItem("pioneer_meta_gold", String(next));
-      return next;
-    });
-
-    setInventory((prev) => {
-      const next = prev.filter((i) => i.id !== item.id);
-      localStorage.setItem("pioneer_inventory", JSON.stringify(next));
-      return next;
-    });
-
-    playSfx("upgrade");
   };
 
   const handlePostListing = (item: any, priceInput: number) => {
@@ -1560,7 +1536,7 @@ export default function App() {
 
     triggerAdFlow("DAILY_CHECKIN", language === "vi" ? "Đang phát sóng quảng cáo điểm danh..." : "Loading check-in broadcast...", () => {
       setMetaGold((prev: number) => {
-        const next = prev + 10;
+        const next = prev + 1000;
         localStorage.setItem("pioneer_meta_gold", String(next));
         return next;
       });
@@ -1571,11 +1547,11 @@ export default function App() {
       logTransaction({
         id: `checkin-${Date.now()}`,
         type: "deposit",
-        amountCoins: 10,
+        amountCoins: 1000,
         piAmount: 0,
         status: "success",
         timestamp: Date.now(),
-        memo: language === "vi" ? "Điểm danh hàng ngày (+10 xu)" : "Daily Check-in (+10 coins)"
+        memo: language === "vi" ? "Điểm danh hàng ngày (+1,000 xu)" : "Daily Check-in (+1,000 coins)"
       });
     });
   };
@@ -1785,7 +1761,7 @@ export default function App() {
     if (shopUpgrades[key] >= 5) return;
 
     if (payWithPiMode && (window as any).Pi) {
-      const piAmount = parseFloat((cost * 0.001).toFixed(4));
+      const piAmount = parseFloat((cost * 0.000001).toFixed(6));
       setPiPaymentStatus("creating");
       setPiPaymentError("");
 
@@ -3493,87 +3469,101 @@ export default function App() {
             </div>
 
             {/* Permanent Upgrades Matrix Shop */}
-            <div className="bg-brand-card border border-brand-border rounded-xl p-4 my-2.5">
-              <div className="flex items-center justify-between border-b border-brand-border pb-2.5 mb-2.5">
-                <div className="flex items-center space-x-2">
-                  <Coins className="w-4 h-4 text-brand-accent" />
-                  <span className="font-display font-bold text-xs uppercase tracking-wider text-slate-700">{t("baseShopTitle")}</span>
-                </div>
-                <div className="bg-amber-500/10 border border-brand-accent/25 px-2.5 py-0.5 rounded text-xs text-brand-accent font-mono font-bold">
-                  {metaGold} ¢
-                </div>
-              </div>
-
-              {/* Pi Integration HUD Section */}
-              {typeof window !== "undefined" && (window as any).Pi ? (
-                <div className="mb-3 p-2 bg-purple-50 rounded-lg border border-purple-200/60 flex flex-col space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px]">
-                    <div className="flex items-center space-x-1 font-mono text-purple-700 font-bold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span>{t("piConnected")}</span>
+            <div className="bg-brand-card border border-brand-border rounded-xl p-3.5 my-2.5">
+              
+              {/* Pioneer Command Center Dashboard */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3.5 space-y-2.5">
+                {/* Profile row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center font-bold text-indigo-700 text-[10px] font-mono shadow-sm">
+                      {piUser ? piUser.username.substring(0, 2).toUpperCase() : "P"}
                     </div>
-                    {piUser ? (
-                      <span className="text-purple-600 font-bold">@{piUser.username}</span>
-                    ) : (
-                      <button
-                        onClick={() => handlePiAuth(true)}
-                        disabled={piPaymentStatus === "authenticating"}
-                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded cursor-pointer transition duration-150 shadow-sm"
-                      >
-                        {piPaymentStatus === "authenticating" ? t("signingIn") : t("signIn")}
-                      </button>
-                    )}
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-800 font-display leading-none">
+                        {piUser ? `@${piUser.username}` : (language === "vi" ? "Phi Hành Gia" : "Astronaut Pioneer")}
+                      </div>
+                      <div className="flex items-center space-x-1 text-[7px] text-slate-400 mt-0.5 font-mono uppercase tracking-wider">
+                        <span className={`w-1 h-1 rounded-full ${piUser ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`}></span>
+                        <span>{piUser ? (language === "vi" ? "Ví Đã Khóa" : "Wallet Linked") : (language === "vi" ? "Chưa Kết Nối" : "Offline Wallet")}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  {piPaymentError && !piUser && (
-                    <div className="text-[9px] text-rose-500 font-mono mt-1 leading-normal border-t border-purple-100/50 pt-1">
-                      ⚠️ {t("errorPrefix")}{piPaymentError}
-                    </div>
+                  {/* Auth Actions */}
+                  {!piUser && typeof window !== "undefined" && (window as any).Pi ? (
+                    <button
+                      onClick={() => handlePiAuth(true)}
+                      disabled={piPaymentStatus === "authenticating"}
+                      className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-extrabold text-[8px] uppercase tracking-wider px-2 py-1 rounded-md cursor-pointer transition shadow-sm"
+                    >
+                      {piPaymentStatus === "authenticating" ? t("signingIn") : t("signIn")}
+                    </button>
+                  ) : !piUser && (
+                    <span className="text-[7px] text-slate-400 font-mono border border-slate-200 bg-white px-1.5 py-0.5 rounded uppercase">
+                      Local Mode
+                    </span>
                   )}
-                  
-                  {/* Mode switcher toggle */}
-                  <div className="flex items-center justify-between bg-white p-1 rounded border border-purple-200/50">
-                    <span className="text-[9px] text-slate-600 font-medium pl-1">{t("paymentProtocol")}</span>
+                </div>
+
+                {piPaymentError && !piUser && (
+                  <div className="text-[8px] text-rose-500 font-mono leading-tight bg-rose-50 p-1.5 rounded border border-rose-100">
+                    ⚠️ {t("errorPrefix")}{piPaymentError}
+                  </div>
+                )}
+
+                {/* Currency Grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Gold Balance */}
+                  <div className="bg-white border border-slate-200/80 rounded-lg p-1.5 flex items-center justify-between shadow-xs">
+                    <div className="flex items-center space-x-1">
+                      <span className="text-xs">💰</span>
+                      <span className="text-[8px] font-bold text-slate-500 font-display uppercase tracking-wide">
+                        {language === "vi" ? "Vàng" : "Gold"}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-extrabold text-amber-600">
+                      {metaGold}¢
+                    </span>
+                  </div>
+
+                  {/* Gift Boxes */}
+                  <div className="bg-white border border-slate-200/80 rounded-lg p-1.5 flex items-center justify-between shadow-xs">
+                    <div className="flex items-center space-x-1">
+                      <span className="text-xs">🎁</span>
+                      <span className="text-[8px] font-bold text-slate-500 font-display uppercase tracking-wide">
+                        {language === "vi" ? "Hộp quà" : "Boxes"}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-extrabold text-rose-600 animate-pulse">
+                      {giftBoxes}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sub-bar: API status & Mode Switcher */}
+                <div className="border-t border-slate-200/60 pt-2 flex items-center justify-between text-[8px] font-mono uppercase tracking-wider text-slate-400">
+                  <div className="flex items-center space-x-1">
+                    <Shield className="w-3 h-3 text-slate-400" />
+                    <span>API:</span>
+                    <span className={piApiKeyConfigured === true ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                      {piApiKeyConfigured === true ? "ACTIVE" : "MISSING"}
+                    </span>
+                  </div>
+
+                  {typeof window !== "undefined" && (window as any).Pi && (
                     <button
                       onClick={() => setPayWithPiMode(!payWithPiMode)}
-                      className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase tracking-wider font-bold transition duration-200 cursor-pointer ${
+                      className={`px-1.5 py-0.5 rounded text-[7px] font-mono uppercase tracking-wider font-extrabold transition-all duration-150 cursor-pointer ${
                         payWithPiMode
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "bg-slate-100 text-slate-500"
+                          ? "bg-purple-600 text-white shadow-xs"
+                          : "bg-slate-200 text-slate-500"
                       }`}
                     >
-                      {payWithPiMode ? t("piTestnet") : t("creditsLocal")}
+                      {payWithPiMode ? "PAY: PI" : "PAY: LOCAL"}
                     </button>
-                  </div>
+                  )}
                 </div>
-              ) : (
-                <div className="mb-3 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center text-[8px] font-mono text-slate-500 uppercase tracking-wider">
-                  {t("openInsidePiBrowser")}
-                </div>
-              )}
-
-              {/* API Configuration Status Indicator */}
-              <div className="mb-3.5 p-2 bg-slate-50 border border-brand-border rounded-lg text-[10px] space-y-1 font-sans">
-                <div className="flex items-center justify-between text-slate-600 font-medium">
-                  <span className="flex items-center space-x-1">
-                    <Shield className="w-3 h-3 text-brand-accent" />
-                    <span>{t("apiKeyStatus")}</span>
-                  </span>
-                  <span className={`font-bold font-mono px-1.5 py-0.5 rounded text-[8px] uppercase ${
-                    piApiKeyConfigured === true
-                      ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                      : piApiKeyConfigured === false
-                      ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
-                      : "bg-slate-100 text-slate-500"
-                  }`}>
-                    {piApiKeyConfigured === true ? t("apiKeyConfigured") : piApiKeyConfigured === false ? t("apiKeyNotConfigured") : t("apiKeyChecking")}
-                  </span>
-                </div>
-                {piApiKeyConfigured === false && (
-                  <p className="text-[9px] text-rose-500 leading-normal font-medium bg-rose-50/50 p-1 rounded border border-rose-100">
-                    {t("apiKeyWarning")}
-                  </p>
-                )}
               </div>
 
               {/* Daily Check-in Button */}
@@ -3587,7 +3577,7 @@ export default function App() {
                       {language === "vi" ? "Điểm Danh Hàng Ngày" : "Daily Check-in"}
                     </h4>
                     <p className="text-[9px] text-amber-700 font-sans leading-tight mt-0.5">
-                      {language === "vi" ? "Xem quảng cáo nhận ngay +10 xu vàng!" : "Watch a short ad to receive +10 gold coins!"}
+                      {language === "vi" ? "Xem quảng cáo nhận ngay +1,000 xu vàng!" : "Watch a short ad to receive +1,000 gold coins!"}
                     </p>
                   </div>
                 </div>
@@ -3603,82 +3593,47 @@ export default function App() {
                 >
                   {hasCheckedInToday 
                     ? (language === "vi" ? "Đã Điểm Danh" : "Checked In") 
-                    : (language === "vi" ? "Nhận 10 Xu" : "Get 10¢")}
+                    : (language === "vi" ? "Nhận 1,000 Xu" : "Get 1,000¢")}
                 </button>
               </div>
 
-              {/* Tab Selector - Row 1 */}
-              <div className="flex border-b border-brand-border text-xs bg-slate-50 p-1 rounded-t-lg space-x-1">
-                <button
-                  type="button"
-                  onClick={() => setShopTab("upgrades")}
-                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
-                    shopTab === "upgrades"
-                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  {t("systemsUpgrades")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShopTab("exchange")}
-                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
-                    shopTab === "exchange"
-                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  {t("piExchange")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShopTab("history")}
-                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
-                    shopTab === "history"
-                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  {t("transactionHistory")}
-                </button>
-              </div>
-              
-              {/* Tab Selector - Row 2 */}
-              <div className="flex border-b border-brand-border mb-3 text-xs bg-slate-100 p-1 rounded-b-lg space-x-1">
-                <button
-                  type="button"
-                  onClick={() => setShopTab("inventory")}
-                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
-                    shopTab === "inventory"
-                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  🎁 {language === "vi" ? "Hộp Quà & Kho đồ" : "Inventory & Boxes"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShopTab("marketplace")}
-                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
-                    shopTab === "marketplace"
-                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  🎪 {language === "vi" ? "Chợ Giao Thương" : "Market Bazaar"}
-                </button>
+              {/* Tab Selector - Unified Modern Horizontal Layout */}
+              <div className="flex overflow-x-auto scrollbar-none mb-3.5 p-1 bg-slate-100 rounded-xl border border-slate-200/80 space-x-1 shrink-0">
+                {[
+                  { id: "upgrades", label: t("systemsUpgrades"), icon: "🚀" },
+                  { id: "inventory", label: language === "vi" ? "Túi Đồ" : "Inventory", icon: "🎒" },
+                  { id: "marketplace", label: language === "vi" ? "Chợ" : "Bazaar", icon: "🎪" },
+                  { id: "exchange", label: t("piExchange"), icon: "💱" },
+                  { id: "history", label: t("transactionHistory"), icon: "📜" }
+                ].map((tab) => {
+                  const isActive = shopTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setShopTab(tab.id as any)}
+                      className={`flex-1 min-w-[70px] py-1.5 px-0.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-lg transition-all duration-200 cursor-pointer flex flex-col items-center justify-center space-y-0.5 select-none ${
+                        isActive
+                          ? "bg-indigo-600 text-white shadow-sm font-extrabold scale-[1.02]"
+                          : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/50"
+                      }`}
+                    >
+                      <span className="text-xs">{tab.icon}</span>
+                      <span className="truncate max-w-[65px] leading-none text-[8px]">{tab.label}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {shopTab === "upgrades" ? (
                 /* Individual Shop Upgrade Slots */
                 <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
                   {[
-                    { key: "damage", label: t("plasmaAccelerators"), icon: <Zap className="w-3.5 h-3.5" />, cost: (shopUpgrades.damage + 1) * 20, desc: t("plasmaAcceleratorsDesc") },
-                    { key: "health", label: t("nanoshieldArmor"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.health + 1) * 15, desc: t("nanoshieldArmorDesc") },
-                    { key: "speed", label: t("reactorThrusters"), icon: <Activity className="w-3.5 h-3.5" />, cost: (shopUpgrades.speed + 1) * 20, desc: t("reactorThrustersDesc") },
-                    { key: "magnet", label: t("quantumHarvester"), icon: <Sparkles className="w-3.5 h-3.5" />, cost: (shopUpgrades.magnet + 1) * 15, desc: t("quantumHarvesterDesc") },
-                    { key: "regen", label: t("naniteRepairSystems"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.regen + 1) * 25, desc: t("naniteRepairSystemsDesc") },
+                    { key: "damage", label: t("plasmaAccelerators"), icon: <Zap className="w-3.5 h-3.5" />, cost: (shopUpgrades.damage + 1) * 2000, desc: t("plasmaAcceleratorsDesc") },
+                    { key: "health", label: t("nanoshieldArmor"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.health + 1) * 1500, desc: t("nanoshieldArmorDesc") },
+                    { key: "speed", label: t("reactorThrusters"), icon: <Activity className="w-3.5 h-3.5" />, cost: (shopUpgrades.speed + 1) * 2000, desc: t("reactorThrustersDesc") },
+                    { key: "magnet", label: t("quantumHarvester"), icon: <Sparkles className="w-3.5 h-3.5" />, cost: (shopUpgrades.magnet + 1) * 1500, desc: t("quantumHarvesterDesc") },
+                    { key: "regen", label: t("naniteRepairSystems"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.regen + 1) * 2500, desc: t("naniteRepairSystemsDesc") },
                   ].map((item) => {
                     const currentLvl = (shopUpgrades as any)[item.key];
                     const maxed = currentLvl >= 5;
@@ -3727,7 +3682,7 @@ export default function App() {
                           ) : payWithPiMode ? (
                             <>
                               <span className="text-[8px] opacity-85 uppercase leading-none">{t("piPayLabel")}</span>
-                              <span className="font-bold mt-0.5">{(item.cost * 0.001).toFixed(3)}π</span>
+                              <span className="font-bold mt-0.5">{(item.cost * 0.000001).toFixed(6).replace(/\.?0+$/, "")}π</span>
                             </>
                           ) : (
                             <>
@@ -3757,17 +3712,17 @@ export default function App() {
                     </span>
                     <div className="grid grid-cols-2 gap-1.5">
                       {[
-                        { coins: 100, pi: 0.01 },
-                        { coins: 500, pi: 0.05 },
-                        { coins: 1000, pi: 0.10 },
-                        { coins: 5000, pi: 0.50 }
+                        { coins: 10000, pi: 0.01 },
+                        { coins: 50000, pi: 0.05 },
+                        { coins: 100000, pi: 0.10 },
+                        { coins: 500000, pi: 0.50 }
                       ].map((pkg) => (
                         <button
                           key={pkg.coins}
                           onClick={() => buyCoinsWithPi(pkg.coins, pkg.pi)}
                           className="p-1.5 border border-purple-200 hover:border-purple-500 bg-white hover:bg-purple-50/30 transition text-left rounded-lg cursor-pointer flex flex-col justify-between shadow-sm"
                         >
-                          <span className="text-[10px] font-mono font-bold text-slate-800">+{pkg.coins} {language === "vi" ? "Xu" : "Coins"}</span>
+                          <span className="text-[10px] font-mono font-bold text-slate-800">+{pkg.coins.toLocaleString()} {language === "vi" ? "Xu" : "Coins"}</span>
                           <span className="text-[8px] font-bold font-mono text-purple-600 mt-0.5">{pkg.pi} π</span>
                         </button>
                       ))}
@@ -4020,13 +3975,6 @@ export default function App() {
                                   className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
                                 >
                                   {language === "vi" ? "Mặc" : "Equip"}
-                                </button>
-                                <button
-                                  onClick={() => handleSellToMerchant(item)}
-                                  className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer flex items-center space-x-0.5"
-                                >
-                                  <span>💰</span>
-                                  <span>{item.sellPrice}xu</span>
                                 </button>
                                 <button
                                   onClick={() => handlePostListing(item, Math.floor(item.sellPrice * 1.5))}
