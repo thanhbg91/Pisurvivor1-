@@ -252,6 +252,129 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // ==========================================
+  // EQUIPMENT, GIFT BOXES & MARKETPLACE STATES
+  // ==========================================
+  const [giftBoxes, setGiftBoxes] = useState<number>(() => {
+    const saved = localStorage.getItem("pioneer_gift_boxes");
+    return saved ? parseInt(saved, 10) : 3; // start with 3 gift boxes for new players!
+  });
+
+  const [inventory, setInventory] = useState<any[]>(() => {
+    const saved = localStorage.getItem("pioneer_inventory");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    // Give starter equipment
+    const starterWeapon = {
+      id: "item-starter-wpn",
+      name: "Súng Thám Hiểm Sơ Cấp",
+      type: "weapon",
+      rarity: "common",
+      statType: "damage",
+      value: 5,
+      sellPrice: 10
+    };
+    const starter = [starterWeapon];
+    localStorage.setItem("pioneer_inventory", JSON.stringify(starter));
+    return starter;
+  });
+
+  const [equippedWeapon, setEquippedWeapon] = useState<any | null>(() => {
+    const saved = localStorage.getItem("pioneer_equipped_weapon");
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [equippedArmor, setEquippedArmor] = useState<any | null>(() => {
+    const saved = localStorage.getItem("pioneer_equipped_armor");
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [equippedAccessory, setEquippedAccessory] = useState<any | null>(() => {
+    const saved = localStorage.getItem("pioneer_equipped_accessory");
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [isOpeningBox, setIsOpeningBox] = useState(false);
+  const [openedReward, setOpenedReward] = useState<{ coins: number; item: any | null } | null>(null);
+
+  const [marketplaceListings, setMarketplaceListings] = useState<any[]>(() => {
+    const saved = localStorage.getItem("pioneer_marketplace");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    // Generate simulated active listings from other players
+    const simulatedListings = [
+      {
+        id: "list-1",
+        item: {
+          id: "item-npc-1",
+          name: "Kiếm Quang Tinh Thể",
+          type: "weapon",
+          rarity: "rare",
+          statType: "damage",
+          value: 15,
+          sellPrice: 35
+        },
+        price: 35,
+        seller: "SpaceWalker_Pi",
+        sold: false
+      },
+      {
+        id: "list-2",
+        item: {
+          id: "item-npc-2",
+          name: "Khiên Năng Lượng Đa Lớp",
+          type: "armor",
+          rarity: "rare",
+          statType: "health",
+          value: 30,
+          sellPrice: 40
+        },
+        price: 45,
+        seller: "Pioneer_X",
+        sold: false
+      },
+      {
+        id: "list-3",
+        item: {
+          id: "item-npc-3",
+          name: "Vòng Tay Động Lực",
+          type: "accessory",
+          rarity: "rare",
+          statType: "speed",
+          value: 12,
+          sellPrice: 28
+        },
+        price: 30,
+        seller: "Antipi_Expert",
+        sold: false
+      }
+    ];
+    localStorage.setItem("pioneer_marketplace", JSON.stringify(simulatedListings));
+    return simulatedListings;
+  });
+
   // Ad simulation overlays
   const [adState, setAdState] = useState<{
     visible: boolean;
@@ -286,7 +409,7 @@ export default function App() {
     return false;
   });
   const [piApiKeyConfigured, setPiApiKeyConfigured] = useState<boolean | null>(null);
-  const [shopTab, setShopTab] = useState<"upgrades" | "exchange" | "history">("upgrades");
+  const [shopTab, setShopTab] = useState<"upgrades" | "exchange" | "history" | "inventory" | "marketplace">("upgrades");
   const [hasCheckedInToday, setHasCheckedInToday] = useState(() => {
     const lastCheckin = localStorage.getItem("pioneer_last_checkin");
     return lastCheckin === new Date().toDateString();
@@ -338,6 +461,308 @@ export default function App() {
       localStorage.setItem("pioneer_pi_transactions", JSON.stringify(next));
       return next;
     });
+  };
+
+  // ==========================================
+  // PROCEDURAL LOOT & EQUIPMENT HELPERS
+  // ==========================================
+  const generateRandomEquipment = (rarityRoll?: number) => {
+    const roll = rarityRoll !== undefined ? rarityRoll : Math.random() * 100;
+    let rarity: "common" | "rare" | "epic" | "legendary" = "common";
+    if (roll > 96) rarity = "legendary";
+    else if (roll > 82) rarity = "epic";
+    else if (roll > 55) rarity = "rare";
+
+    const types: ("weapon" | "armor" | "accessory")[] = ["weapon", "armor", "accessory"];
+    const type = types[Math.floor(Math.random() * types.length)];
+
+    let name = "";
+    let statType: "damage" | "health" | "speed" | "regen" | "magnet" = "damage";
+    let value = 0;
+    let sellPrice = 10;
+
+    if (type === "weapon") {
+      const weaponNames = {
+        common: ["Plasma Sơ Cấp", "Súng Phun Lửa Cũ", "Dao Găm Năng Lượng"],
+        rare: ["Súng Laser Tần Số", "Kiếm Quang Tinh Thể", "Pháo Plasma Cải Tiến"],
+        epic: ["Súng Điện Từ Tesla", "Trọng Lực Kiếm Vô Cực", "Tia Chớp Phân Hủy"],
+        legendary: ["Vũ Khí Hủy Diệt Pioneer", "Thần Binh Antipi", "Pháo Cổ Độc Bản"]
+      };
+      name = weaponNames[rarity][Math.floor(Math.random() * weaponNames[rarity].length)];
+      statType = "damage";
+      
+      if (rarity === "common") value = Math.floor(5 + Math.random() * 6); // +5% to +10%
+      else if (rarity === "rare") value = Math.floor(11 + Math.random() * 10); // +11% to +20%
+      else if (rarity === "epic") value = Math.floor(21 + Math.random() * 15); // +21% to +35%
+      else value = Math.floor(36 + Math.random() * 25); // +36% to +60%
+      
+      sellPrice = rarity === "common" ? 15 : rarity === "rare" ? 30 : rarity === "epic" ? 75 : 180;
+    } else if (type === "armor") {
+      const armorNames = {
+        common: ["Áo Da Thám Hiểm", "Giáp Sợi Carbon", "Lá Chắn Từ Trường Nhẹ"],
+        rare: ["Áo Giáp Thép Titanium", "Khiên Năng Lượng Đa Lớp", "Áo Khoác Sợi Polyme"],
+        epic: ["Giáp Nano Phục Hồi", "Lá Chắn Trọng Lực Kép", "Áo Choàng Bóng Tối"],
+        legendary: ["Giáp Hạt Nhân Tối Thượng", "Khiên Thần Chống Đạn", "Áo Giáp Sinh Học Thần Thánh"]
+      };
+      name = armorNames[rarity][Math.floor(Math.random() * armorNames[rarity].length)];
+      statType = Math.random() > 0.5 ? "health" : "regen";
+      
+      if (statType === "health") {
+        if (rarity === "common") value = Math.floor(10 + Math.random() * 11);
+        else if (rarity === "rare") value = Math.floor(21 + Math.random() * 20);
+        else if (rarity === "epic") value = Math.floor(41 + Math.random() * 40);
+        else value = Math.floor(81 + Math.random() * 100);
+      } else {
+        if (rarity === "common") value = parseFloat((0.1 + Math.random() * 0.2).toFixed(2));
+        else if (rarity === "rare") value = parseFloat((0.31 + Math.random() * 0.4).toFixed(2));
+        else if (rarity === "epic") value = parseFloat((0.71 + Math.random() * 0.8).toFixed(2));
+        else value = parseFloat((1.51 + Math.random() * 1.5).toFixed(2));
+      }
+      
+      sellPrice = rarity === "common" ? 12 : rarity === "rare" ? 25 : rarity === "epic" ? 65 : 150;
+    } else {
+      const accessoryNames = {
+        common: ["Vòng Đeo Chân Động Cơ", "Nhẫn Nam Châm Sơ Cấp", "Găng Tay Tiện Ích"],
+        rare: ["Kính Nhìn Đêm Siêu Quang", "Vòng Tay Động Lực", "Giầy Bay Phản Lực"],
+        epic: ["Trái Tim Nhân Tạo Siêu Tải", "Cánh Bướm Phản Vật Chất", "Nhẫn Từ Trường Vũ Trụ"],
+        legendary: ["Đồng Hồ Du Hành Thời Gian", "Mũ Bảo Hiểm Vô Cực", "Huy Chương Danh Dự Pioneer"]
+      };
+      name = accessoryNames[rarity][Math.floor(Math.random() * accessoryNames[rarity].length)];
+      statType = Math.random() > 0.5 ? "speed" : "magnet";
+
+      if (statType === "speed") {
+        if (rarity === "common") value = Math.floor(3 + Math.random() * 5);
+        else if (rarity === "rare") value = Math.floor(8 + Math.random() * 8);
+        else if (rarity === "epic") value = Math.floor(16 + Math.random() * 10);
+        else value = Math.floor(26 + Math.random() * 15);
+      } else {
+        if (rarity === "common") value = Math.floor(15 + Math.random() * 16);
+        else if (rarity === "rare") value = Math.floor(31 + Math.random() * 30);
+        else if (rarity === "epic") value = Math.floor(61 + Math.random() * 40);
+        else value = Math.floor(101 + Math.random() * 100);
+      }
+      
+      sellPrice = rarity === "common" ? 10 : rarity === "rare" ? 22 : rarity === "epic" ? 55 : 130;
+    }
+
+    sellPrice = Math.floor(sellPrice * (0.9 + Math.random() * 0.2));
+
+    return {
+      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      type,
+      rarity,
+      statType,
+      value,
+      sellPrice
+    };
+  };
+
+  const handleOpenGiftBox = () => {
+    if (giftBoxes <= 0 || isOpeningBox) return;
+
+    setIsOpeningBox(true);
+    setOpenedReward(null);
+    playSfx("shoot");
+
+    setGiftBoxes((prev) => {
+      const next = Math.max(0, prev - 1);
+      localStorage.setItem("pioneer_gift_boxes", String(next));
+      return next;
+    });
+
+    setTimeout(() => {
+      const coinReward = Math.floor(10 + Math.random() * 16); // guarantee 10 - 25 gold coins
+      let itemReward: any = null;
+      if (Math.random() < 0.35) { // 35% chance to roll item
+        itemReward = generateRandomEquipment();
+      }
+
+      setMetaGold((prev) => {
+        const next = prev + coinReward;
+        localStorage.setItem("pioneer_meta_gold", String(next));
+        return next;
+      });
+
+      if (itemReward) {
+        setInventory((prev) => {
+          const next = [...prev, itemReward];
+          localStorage.setItem("pioneer_inventory", JSON.stringify(next));
+          return next;
+        });
+      }
+
+      playSfx("levelup");
+      setOpenedReward({
+        coins: coinReward,
+        item: itemReward
+      });
+      setIsOpeningBox(false);
+    }, 1200);
+  };
+
+  const handleEquipItem = (item: any) => {
+    if (item.type === "weapon") {
+      setEquippedWeapon(item);
+      localStorage.setItem("pioneer_equipped_weapon", JSON.stringify(item));
+    } else if (item.type === "armor") {
+      setEquippedArmor(item);
+      localStorage.setItem("pioneer_equipped_armor", JSON.stringify(item));
+    } else if (item.type === "accessory") {
+      setEquippedAccessory(item);
+      localStorage.setItem("pioneer_equipped_accessory", JSON.stringify(item));
+    }
+    playSfx("upgrade");
+  };
+
+  const handleUnequipItem = (type: "weapon" | "armor" | "accessory") => {
+    if (type === "weapon") {
+      setEquippedWeapon(null);
+      localStorage.removeItem("pioneer_equipped_weapon");
+    } else if (type === "armor") {
+      setEquippedArmor(null);
+      localStorage.removeItem("pioneer_equipped_armor");
+    } else if (type === "accessory") {
+      setEquippedAccessory(null);
+      localStorage.removeItem("pioneer_equipped_accessory");
+    }
+    playSfx("hurt");
+  };
+
+  const handleSellToMerchant = (item: any) => {
+    const isWpnEquipped = equippedWeapon?.id === item.id;
+    const isArmEquipped = equippedArmor?.id === item.id;
+    const isAccEquipped = equippedAccessory?.id === item.id;
+
+    if (isWpnEquipped || isArmEquipped || isAccEquipped) {
+      alert(language === "vi" ? "Vui lòng tháo trang bị trước khi bán!" : "Please unequip the item before selling!");
+      return;
+    }
+
+    const price = item.sellPrice;
+    setMetaGold((prev) => {
+      const next = prev + price;
+      localStorage.setItem("pioneer_meta_gold", String(next));
+      return next;
+    });
+
+    setInventory((prev) => {
+      const next = prev.filter((i) => i.id !== item.id);
+      localStorage.setItem("pioneer_inventory", JSON.stringify(next));
+      return next;
+    });
+
+    playSfx("upgrade");
+  };
+
+  const handlePostListing = (item: any, priceInput: number) => {
+    const isWpnEquipped = equippedWeapon?.id === item.id;
+    const isArmEquipped = equippedArmor?.id === item.id;
+    const isAccEquipped = equippedAccessory?.id === item.id;
+
+    if (isWpnEquipped || isArmEquipped || isAccEquipped) {
+      alert(language === "vi" ? "Vui lòng tháo trang bị trước khi treo bán!" : "Please unequip before posting for sale!");
+      return;
+    }
+
+    if (priceInput <= 0 || isNaN(priceInput)) {
+      alert(language === "vi" ? "Giá bán không hợp lệ!" : "Invalid price!");
+      return;
+    }
+
+    const newListing = {
+      id: `list-${Date.now()}`,
+      item,
+      price: priceInput,
+      seller: piUser?.username || "You",
+      sold: false
+    };
+
+    setInventory((prev) => {
+      const next = prev.filter((i) => i.id !== item.id);
+      localStorage.setItem("pioneer_inventory", JSON.stringify(next));
+      return next;
+    });
+
+    setMarketplaceListings((prev) => {
+      const next = [newListing, ...prev];
+      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
+      return next;
+    });
+
+    playSfx("upgrade");
+
+    // Simulate NPC purchase after 15 to 30 seconds
+    setTimeout(() => {
+      setMarketplaceListings((prev) => {
+        const found = prev.find((l) => l.id === newListing.id);
+        if (found && !found.sold) {
+          const updated = prev.map((l) => l.id === newListing.id ? { ...l, sold: true } : l);
+          localStorage.setItem("pioneer_marketplace", JSON.stringify(updated));
+          return updated;
+        }
+        return prev;
+      });
+    }, 15000 + Math.random() * 20000);
+  };
+
+  const handleClaimSoldListing = (listingId: string, goldPrice: number) => {
+    setMetaGold((prev) => {
+      const next = prev + goldPrice;
+      localStorage.setItem("pioneer_meta_gold", String(next));
+      return next;
+    });
+
+    setMarketplaceListings((prev) => {
+      const next = prev.filter((l) => l.id !== listingId);
+      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
+      return next;
+    });
+
+    playSfx("upgrade");
+  };
+
+  const handleCancelListing = (listing: any) => {
+    setInventory((prev) => {
+      const next = [...prev, listing.item];
+      localStorage.setItem("pioneer_inventory", JSON.stringify(next));
+      return next;
+    });
+
+    setMarketplaceListings((prev) => {
+      const next = prev.filter((l) => l.id !== listing.id);
+      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
+      return next;
+    });
+
+    playSfx("hurt");
+  };
+
+  const handleBuyListing = (listing: any) => {
+    if (metaGold < listing.price) {
+      alert(language === "vi" ? "Không đủ xu vàng!" : "Not enough gold coins!");
+      return;
+    }
+
+    setMetaGold((prev) => {
+      const next = prev - listing.price;
+      localStorage.setItem("pioneer_meta_gold", String(next));
+      return next;
+    });
+
+    setInventory((prev) => {
+      const next = [...prev, listing.item];
+      localStorage.setItem("pioneer_inventory", JSON.stringify(next));
+      return next;
+    });
+
+    setMarketplaceListings((prev) => {
+      const next = prev.filter((l) => l.id !== listing.id);
+      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
+      return next;
+    });
+
+    playSfx("upgrade");
   };
 
   // Sync state setters to window globally so asynchronous callbacks from the Pi SDK
@@ -622,12 +1047,32 @@ export default function App() {
     setHasRevivedThisRun(false);
     setDoubleGoldApplied(false);
 
-    // Apply permanent stats from shop
-    const baseMaxHp = 100 + shopUpgrades.health * 15;
-    const baseSpeed = 1.8 + shopUpgrades.speed * 0.18;
-    const baseDamage = 1.0 + shopUpgrades.damage * 0.15;
-    const baseMagnet = 100 + shopUpgrades.magnet * 25;
-    const baseRegen = shopUpgrades.regen * 0.35;
+    // Calculate equipped items bonuses
+    let weaponDmgBonus = 0;
+    if (equippedWeapon && equippedWeapon.statType === "damage") {
+      weaponDmgBonus = (equippedWeapon.value / 100);
+    }
+
+    let armorHpBonus = 0;
+    let armorRegenBonus = 0;
+    if (equippedArmor) {
+      if (equippedArmor.statType === "health") armorHpBonus = equippedArmor.value;
+      if (equippedArmor.statType === "regen") armorRegenBonus = equippedArmor.value;
+    }
+
+    let accSpeedBonus = 0;
+    let accMagnetBonus = 0;
+    if (equippedAccessory) {
+      if (equippedAccessory.statType === "speed") accSpeedBonus = (equippedAccessory.value / 100) * 1.8;
+      if (equippedAccessory.statType === "magnet") accMagnetBonus = equippedAccessory.value;
+    }
+
+    // Apply permanent stats from shop + equipment bonuses
+    const baseMaxHp = 100 + shopUpgrades.health * 15 + armorHpBonus;
+    const baseSpeed = 1.8 + shopUpgrades.speed * 0.18 + accSpeedBonus;
+    const baseDamage = 1.0 + shopUpgrades.damage * 0.15 + weaponDmgBonus;
+    const baseMagnet = 100 + shopUpgrades.magnet * 25 + accMagnetBonus;
+    const baseRegen = shopUpgrades.regen * 0.35 + armorRegenBonus;
 
     // Reset Engine Ref
     engineRef.current = {
@@ -639,7 +1084,7 @@ export default function App() {
         level: 1,
         xp: 0,
         xpNeeded: 50,
-        gold: 0,
+        gold: 0, // This counts collected Gift Boxes in the run
         kills: 0,
         speed: baseSpeed,
         magnetRange: baseMagnet,
@@ -1766,6 +2211,20 @@ export default function App() {
     if (confirm(msg)) {
       localStorage.clear();
       setMetaGold(0);
+      setGiftBoxes(3);
+      const starterWeapon = {
+        id: "item-starter-wpn",
+        name: "Súng Thám Hiểm Sơ Cấp",
+        type: "weapon",
+        rarity: "common",
+        statType: "damage",
+        value: 5,
+        sellPrice: 10
+      };
+      setInventory([starterWeapon]);
+      setEquippedWeapon(null);
+      setEquippedArmor(null);
+      setEquippedAccessory(null);
       setShopUpgrades({ damage: 0, health: 0, speed: 0, magnet: 0, regen: 0 });
       setHighScores([]);
       playSfx("hurt");
@@ -2125,37 +2584,21 @@ export default function App() {
             });
           }
 
-          // Randomize dropping Gold Coins or XP Orbs with strict economy limits
+          // Randomize dropping Gift Boxes or XP Orbs
           const isBoss = e.type === "boss";
           
-          // Check if player has reached the game session or daily grind cap
-          const reachedSessionCap = engine.player.gold >= SESSION_GOLD_LIMIT;
-          const reachedDailyCap = dailyGrindGold + engine.player.gold >= DAILY_GRIND_LIMIT;
-          
-          // Drop rate for normal targets is reduced to 4% (down from 18%) to balance the economy.
-          // Gold is only allowed to drop if we haven't hit the session/daily cap.
-          const isGold = !reachedSessionCap && !reachedDailyCap && (isBoss ? true : Math.random() < 0.04);
+          // Drop rate for normal targets is 4% for a Gift Box. Boss is 100% guaranteed to drop a box!
+          const isGold = isBoss ? true : Math.random() < 0.04;
 
-          // High difficulty rewards: Scale the amount if AI intensity is high.
-          // Boss gold drops are calibrated to 8 (down from 15) for sustainable economic balance.
-          let dropAmount = isBoss ? 8 : e.points;
-          if (engine.aiDirector.intensity > 1.1) {
-            dropAmount = Math.ceil(dropAmount * engine.aiDirector.intensity);
-          }
-
-          // If it is a gold item, cap its value to the remaining session or daily limit so they cannot overshoot
-          if (isGold) {
-            const remainingSession = Math.max(1, SESSION_GOLD_LIMIT - engine.player.gold);
-            const remainingDaily = Math.max(1, DAILY_GRIND_LIMIT - (dailyGrindGold + engine.player.gold));
-            dropAmount = Math.min(dropAmount, remainingSession, remainingDaily);
-          }
+          // Gift Box yields exactly 1 unopened package when collected
+          const dropAmount = isGold ? 1 : e.points;
 
           engine.items.push({
             x: e.x,
             y: e.y,
             amount: dropAmount,
-            size: isGold ? 4 : 3,
-            color: isGold ? "#fbbf24" : isBoss ? "#d946ef" : "#10b981", // gold, magenta for boss, green for standard xp
+            size: isGold ? 5 : 3,
+            color: isGold ? "#e11d48" : isBoss ? "#d946ef" : "#10b981", // vibrant red for Gift Box, magenta for boss, green for standard xp
             isGold,
             pulling: false,
           });
@@ -2189,8 +2632,8 @@ export default function App() {
             engine.damageTexts.push({
               x: item.x,
               y: item.y,
-              text: `+${item.amount}¢`,
-              color: "#fbbf24",
+              text: language === "vi" ? `+1 Hộp Quà 🎁` : `+1 Gift Box 🎁`,
+              color: "#fb7185",
               alpha: 1,
               vy: -1.2
             });
@@ -2380,27 +2823,12 @@ export default function App() {
         setGameState("GAMEOVER");
         playSfx("gameover");
 
-        const earnedGold = engine.player.gold;
+        const earnedBoxes = engine.player.gold;
 
-        // Track the daily grind gold permanently
-        setDailyGrindGold((current) => {
-          const next = current + earnedGold;
-          try {
-            const today = new Date().toDateString();
-            localStorage.setItem("pioneer_daily_grind_gold", JSON.stringify({
-              date: today,
-              amount: next
-            }));
-          } catch (e) {
-            console.error(e);
-          }
-          return next;
-        });
-
-        // Credit meta gold permanently
-        setMetaGold((g) => {
-          const next = g + earnedGold;
-          localStorage.setItem("pioneer_meta_gold", next.toString());
+        // Credit unopened gift boxes permanently
+        setGiftBoxes((g) => {
+          const next = g + earnedBoxes;
+          localStorage.setItem("pioneer_gift_boxes", String(next));
           return next;
         });
 
@@ -2412,9 +2840,9 @@ export default function App() {
         setFinalStats({
           time: finalTime,
           kills: finalKills,
-          gold: earnedGold,
+          gold: earnedBoxes,
           level: finalLevel,
-          unlockedGold: earnedGold
+          unlockedGold: earnedBoxes
         });
 
         setHighScores((prev) => {
@@ -2423,7 +2851,7 @@ export default function App() {
             {
               time: finalTime,
               kills: finalKills,
-              gold: earnedGold,
+              gold: earnedBoxes,
               level: finalLevel,
               date: new Date().toLocaleDateString(),
             },
@@ -2475,18 +2903,37 @@ export default function App() {
         ctx.fillRect(finalX, finalY, (s % 2) + 1, (s % 2) + 1);
       }
 
-      // Draw XP/Gold items
+      // Draw XP/Gold items (XP is green, Gold is a beautiful Gift Box!)
       engine.items.forEach((item) => {
         const itemX = item.x - engine.player.x + cx;
         const itemY = item.y - engine.player.y + cy;
 
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 10;
         ctx.shadowColor = item.color;
-        ctx.fillStyle = item.color;
 
-        ctx.beginPath();
-        ctx.arc(itemX, itemY, item.size, 0, Math.PI * 2);
-        ctx.fill();
+        if (item.isGold) {
+          // Draw a gorgeous little Gift Box!
+          const size = 11;
+          ctx.fillStyle = "#e11d48"; // vibrant crimson package body
+          ctx.fillRect(itemX - size / 2, itemY - size / 2, size, size);
+
+          // Yellow/Gold ribbons
+          ctx.fillStyle = "#fbbf24";
+          ctx.fillRect(itemX - 1.5, itemY - size / 2, 3, size); // vertical ribbon
+          ctx.fillRect(itemX - size / 2, itemY - 1.5, size, 3); // horizontal ribbon
+
+          // Tiny ribbon bow loops on top
+          ctx.beginPath();
+          ctx.arc(itemX - 2.2, itemY - size / 2 - 1, 2.2, 0, Math.PI * 2);
+          ctx.arc(itemX + 2.2, itemY - size / 2 - 1, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Circular XP Orbs
+          ctx.fillStyle = item.color;
+          ctx.beginPath();
+          ctx.arc(itemX, itemY, item.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.shadowBlur = 0; // reset
       });
 
@@ -3160,8 +3607,8 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Tab Selector */}
-              <div className="flex border-b border-brand-border mb-3 text-xs bg-slate-50 p-1 rounded-lg space-x-1">
+              {/* Tab Selector - Row 1 */}
+              <div className="flex border-b border-brand-border text-xs bg-slate-50 p-1 rounded-t-lg space-x-1">
                 <button
                   type="button"
                   onClick={() => setShopTab("upgrades")}
@@ -3194,6 +3641,32 @@ export default function App() {
                   }`}
                 >
                   {t("transactionHistory")}
+                </button>
+              </div>
+              
+              {/* Tab Selector - Row 2 */}
+              <div className="flex border-b border-brand-border mb-3 text-xs bg-slate-100 p-1 rounded-b-lg space-x-1">
+                <button
+                  type="button"
+                  onClick={() => setShopTab("inventory")}
+                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
+                    shopTab === "inventory"
+                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  🎁 {language === "vi" ? "Hộp Quà & Kho đồ" : "Inventory & Boxes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShopTab("marketplace")}
+                  className={`flex-1 py-1.5 text-center font-display font-bold uppercase tracking-wider text-[8px] rounded-md transition cursor-pointer ${
+                    shopTab === "marketplace"
+                      ? "bg-purple-600 text-white shadow-sm font-extrabold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  🎪 {language === "vi" ? "Chợ Giao Thương" : "Market Bazaar"}
                 </button>
               </div>
 
@@ -3270,24 +3743,6 @@ export default function App() {
               ) : shopTab === "exchange" ? (
                 /* Pi Exchange Panel */
                 <div className="space-y-3.5 max-h-[190px] overflow-y-auto pr-1">
-                  {/* Premium daily grind economy HUD */}
-                  <div className="p-2 bg-slate-100 rounded-lg border border-slate-200 text-[9px] font-mono leading-normal text-slate-700 space-y-1">
-                    <div className="flex items-center justify-between font-bold text-slate-800">
-                      <span>
-                        {language === "vi" ? "HẠN MỨC CÀY CHAY HÀNG NGÀY:" : "DAILY GRIND CAP:"}
-                      </span>
-                      <span className={dailyGrindGold >= DAILY_GRIND_LIMIT ? "text-red-500 font-extrabold" : "text-emerald-600"}>
-                        {dailyGrindGold}/{DAILY_GRIND_LIMIT} ¢
-                      </span>
-                    </div>
-                    <div className="text-[7.5px] text-slate-500 leading-normal">
-                      {language === "vi" 
-                        ? "Để duy trì cán cân kinh tế, xu vàng từ việc tiêu diệt quái vật bị giới hạn mỗi ngày. Hãy nạp thêm Pi để quy đổi xu không giới hạn!"
-                        : "To sustain economic balance, coins gained from gameplay are capped daily. Deposit Pi for unlimited coin acquisition!"
-                      }
-                    </div>
-                  </div>
-
                   <div className="p-2 bg-purple-50 rounded-lg border border-purple-100 text-[9px] font-mono leading-normal text-purple-700">
                     <span className="font-extrabold text-purple-800 uppercase block mb-1">{t("decentralizedExchange")}</span>
                     {t("depositRate")}<br />
@@ -3324,43 +3779,19 @@ export default function App() {
                     <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block">
                       {t("withdrawTitle")}
                     </span>
-                    {piUser ? (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {[
-                          { coins: 4000, pi: 0.10 },
-                          { coins: 6000, pi: 0.20 },
-                          { coins: 10000, pi: 0.40 },
-                          { coins: 20000, pi: 0.90 }
-                        ].map((pkg) => {
-                          const disabled = metaGold < pkg.coins;
-                          return (
-                            <button
-                              key={pkg.coins}
-                              disabled={disabled}
-                              onClick={() => sellCoinsForPi(pkg.coins, pkg.pi)}
-                              className={`p-1.5 border transition text-left rounded-lg cursor-pointer flex flex-col justify-between shadow-sm ${
-                                disabled
-                                  ? "opacity-45 border-slate-200 bg-slate-50 cursor-not-allowed"
-                                  : "border-amber-200 hover:border-amber-500 bg-white hover:bg-amber-50/20"
-                              }`}
-                            >
-                              <div className="flex justify-between w-full">
-                                <span className="text-[10px] font-mono font-bold text-slate-800">-{pkg.coins} {language === "vi" ? "Xu" : "Coins"}</span>
-                                <span className="text-[7px] text-slate-400 font-mono mt-0.5">({language === "vi" ? "Phí 0.1π" : "0.1π fee"})</span>
-                              </div>
-                              <span className="text-[8px] font-bold font-mono text-amber-600 mt-0.5">+{pkg.pi} π</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-center text-[9px] text-slate-500 font-medium">
-                        {t("connectWalletToSell")}
-                      </div>
-                    )}
+                    <div className="p-3 bg-slate-100 border-2 border-dashed border-slate-300 rounded-xl text-center space-y-1">
+                      <span className="text-[11px] font-extrabold font-display uppercase text-slate-500 tracking-wider block">
+                        🚧 Coming Soon 🚧
+                      </span>
+                      <p className="text-[9px] text-slate-400 font-sans leading-tight">
+                        {language === "vi" 
+                          ? "Tính năng rút Pi đang chờ phê duyệt quyền chính thức từ Pi Core Team." 
+                          : "Withdrawal is awaiting official permissions from Pi Core Team."}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              ) : (
+              ) : shopTab === "history" ? (
                 /* Transaction History Panel */
                 <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
                   {transactions.length === 0 ? (
@@ -3440,7 +3871,288 @@ export default function App() {
                     </div>
                   )}
                 </div>
-              )}
+              ) : shopTab === "inventory" ? (
+                /* Inventory and Unboxing Tab */
+                <div className="space-y-3.5 max-h-[190px] overflow-y-auto pr-1">
+                  {/* Gift Box Unboxing HUD Section */}
+                  <div className="p-3 bg-rose-50 rounded-lg border border-rose-200 text-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xl">🎁</span>
+                        <div>
+                          <span className="text-[11px] font-extrabold font-display uppercase tracking-wide text-rose-800 block">
+                            {language === "vi" ? "Hộp Quà Thám Hiểm" : "Explorer Gift Boxes"}
+                          </span>
+                          <span className="text-[9px] text-rose-600 block leading-tight font-sans">
+                            {language === "vi" ? "Chứa xu vàng và trang bị thuộc tính ngẫu nhiên!" : "Contains coins and randomly attributed equipment!"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded text-xs font-mono font-bold text-rose-600 animate-pulse">
+                        {giftBoxes} hộp
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenGiftBox}
+                      disabled={giftBoxes <= 0 || isOpeningBox}
+                      className={`w-full py-2 border-2 rounded-lg font-display font-extrabold text-xs uppercase tracking-wider text-center transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                        giftBoxes > 0
+                          ? "bg-rose-500 hover:bg-rose-400 text-white border-rose-600 hover:border-rose-500 animate-bounce"
+                          : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                      }`}
+                    >
+                      {isOpeningBox ? (
+                        <span>✨ {language === "vi" ? "ĐANG MỞ..." : "OPENING..."} ✨</span>
+                      ) : (
+                        <>
+                          <span>🔓</span>
+                          <span>{language === "vi" ? "MỞ HỘP QUÀ" : "OPEN GIFT BOX"}</span>
+                        </>
+                      )}
+                    </button>
+
+                    {openedReward && (
+                      <div className="bg-white border border-rose-200 p-2 rounded text-center text-[10px] font-mono text-emerald-600 font-extrabold animate-pulse">
+                        🎉 {language === "vi" 
+                          ? `Nhận được +${openedReward.coins} xu vàng${openedReward.item ? ` & [${openedReward.item.name}]!` : "!"}`
+                          : `Received +${openedReward.coins} coins${openedReward.item ? ` & [${openedReward.item.name}]!` : "!"}`}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Active Equipment Slots */}
+                  <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block">
+                      🛡️ {language === "vi" ? "Trang bị đang mặc" : "Equipped Gear"}
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5 text-center text-[9px] font-mono">
+                      <div className="bg-white border border-slate-200 p-1 rounded">
+                        <div className="text-slate-400 text-[8px] uppercase">{language === "vi" ? "Vũ khí" : "Weapon"}</div>
+                        <div className="font-bold text-brand-accent mt-0.5 truncate text-[9px]">
+                          {equippedWeapon ? equippedWeapon.name : "—"}
+                        </div>
+                        <div className="text-[8px] text-slate-500 mt-0.5">
+                          {equippedWeapon ? `+${equippedWeapon.value}% Sát thương` : ""}
+                        </div>
+                        {equippedWeapon && (
+                          <button
+                            onClick={() => handleUnequipItem("weapon")}
+                            className="text-[8px] text-rose-500 hover:underline cursor-pointer font-bold mt-1 block w-full uppercase"
+                          >
+                            {language === "vi" ? "Tháo" : "Unequip"}
+                          </button>
+                        )}
+                      </div>
+                      <div className="bg-white border border-slate-200 p-1 rounded">
+                        <div className="text-slate-400 text-[8px] uppercase">{language === "vi" ? "Áo giáp" : "Armor"}</div>
+                        <div className="font-bold text-brand-accent mt-0.5 truncate text-[9px]">
+                          {equippedArmor ? equippedArmor.name : "—"}
+                        </div>
+                        <div className="text-[8px] text-slate-500 mt-0.5">
+                          {equippedArmor ? (equippedArmor.statType === "health" ? `+${equippedArmor.value} HP` : `+${equippedArmor.value} HP/s`) : ""}
+                        </div>
+                        {equippedArmor && (
+                          <button
+                            onClick={() => handleUnequipItem("armor")}
+                            className="text-[8px] text-rose-500 hover:underline cursor-pointer font-bold mt-1 block w-full uppercase"
+                          >
+                            {language === "vi" ? "Tháo" : "Unequip"}
+                          </button>
+                        )}
+                      </div>
+                      <div className="bg-white border border-slate-200 p-1 rounded">
+                        <div className="text-slate-400 text-[8px] uppercase">{language === "vi" ? "Trang sức" : "Accessory"}</div>
+                        <div className="font-bold text-brand-accent mt-0.5 truncate text-[9px]">
+                          {equippedAccessory ? equippedAccessory.name : "—"}
+                        </div>
+                        <div className="text-[8px] text-slate-500 mt-0.5">
+                          {equippedAccessory ? (equippedAccessory.statType === "speed" ? `+${equippedAccessory.value}% Tốc độ` : `+${equippedAccessory.value} Nam châm`) : ""}
+                        </div>
+                        {equippedAccessory && (
+                          <button
+                            onClick={() => handleUnequipItem("accessory")}
+                            className="text-[8px] text-rose-500 hover:underline cursor-pointer font-bold mt-1 block w-full uppercase"
+                          >
+                            {language === "vi" ? "Tháo" : "Unequip"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Player Inventory List */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block">
+                      🎒 {language === "vi" ? "Hành lý cá nhân" : "Item Inventory"} ({inventory.length})
+                    </span>
+                    {inventory.length === 0 ? (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center text-[10px] text-slate-400 font-mono">
+                        {language === "vi" ? "Rỗng. Hãy săn quái nhặt hộp quà để kiếm trang bị!" : "Empty. Hunt enemies and unbox gift boxes to find items!"}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {inventory.map((item) => {
+                          let rarityColor = "border-slate-300 text-slate-600 bg-slate-50";
+                          if (item.rarity === "rare") rarityColor = "border-emerald-300 text-emerald-600 bg-emerald-50/40";
+                          if (item.rarity === "epic") rarityColor = "border-blue-300 text-blue-600 bg-blue-50/40";
+                          if (item.rarity === "legendary") rarityColor = "border-amber-300 text-amber-600 bg-amber-50/40 animate-pulse";
+
+                          let statDesc = "";
+                          if (item.statType === "damage") statDesc = `+${item.value}% Sát thương`;
+                          if (item.statType === "health") statDesc = `+${item.value} HP cực đại`;
+                          if (item.statType === "regen") statDesc = `+${item.value} HP hồi/giây`;
+                          if (item.statType === "speed") statDesc = `+${item.value}% Tốc độ di chuyển`;
+                          if (item.statType === "magnet") statDesc = `+${item.value} Tầm nam châm`;
+
+                          return (
+                            <div key={item.id} className={`flex items-center justify-between p-2 rounded-lg border ${rarityColor}`}>
+                              <div className="min-w-0 pr-2">
+                                <span className="text-[10px] font-bold block uppercase truncate">{item.name}</span>
+                                <span className="text-[8px] font-mono block text-slate-500 leading-tight mt-0.5">
+                                  {item.rarity.toUpperCase()} • {statDesc}
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-1 shrink-0">
+                                <button
+                                  onClick={() => handleEquipItem(item)}
+                                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
+                                >
+                                  {language === "vi" ? "Mặc" : "Equip"}
+                                </button>
+                                <button
+                                  onClick={() => handleSellToMerchant(item)}
+                                  className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer flex items-center space-x-0.5"
+                                >
+                                  <span>💰</span>
+                                  <span>{item.sellPrice}xu</span>
+                                </button>
+                                <button
+                                  onClick={() => handlePostListing(item, Math.floor(item.sellPrice * 1.5))}
+                                  className="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
+                                >
+                                  {language === "vi" ? "Bán chợ" : "List Bazaar"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : shopTab === "marketplace" ? (
+                /* Marketplace Tab */
+                <div className="space-y-3.5 max-h-[190px] overflow-y-auto pr-1">
+                  {/* General Marketplace HUD */}
+                  <div className="p-2 bg-indigo-50 rounded-lg border border-indigo-200 text-slate-800 space-y-1">
+                    <span className="text-[11px] font-extrabold font-display uppercase tracking-wide text-indigo-800 block">
+                      🛒 Chợ Giao Thương Pioneer Bazaar
+                    </span>
+                    <p className="text-[9px] text-indigo-600 font-sans leading-tight">
+                      {language === "vi"
+                        ? "Đăng bán các trang bị của bạn lấy xu vàng hoặc mua các vũ khí huyền thoại từ người chơi khác!"
+                        : "Post your items for gold or buy legendary gear listed by other players!"}
+                    </p>
+                  </div>
+
+                  {/* Player's Active Marketplace Listings */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block font-mono">
+                      💼 Gian hàng của bạn ({marketplaceListings.filter(l => l.seller === "player").length})
+                    </span>
+                    {marketplaceListings.filter(l => l.seller === "player").length === 0 ? (
+                      <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-center text-[9px] text-slate-400 font-mono">
+                        {language === "vi" ? "Bạn chưa đăng bán món đồ nào." : "You have no active listings."}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {marketplaceListings.filter(l => l.seller === "player").map((listing) => (
+                          <div key={listing.id} className="flex items-center justify-between p-2 bg-white rounded-lg border border-purple-200 shadow-sm">
+                            <div className="min-w-0 pr-2">
+                              <span className="text-[10px] font-bold text-slate-800 block truncate">{listing.item.name}</span>
+                              <span className="text-[8px] font-mono text-purple-600 block mt-0.5">
+                                {language === "vi" ? `Giá bán: ${listing.price} xu` : `Listed for: ${listing.price} coins`}
+                              </span>
+                            </div>
+                            <div className="shrink-0 flex items-center space-x-1">
+                              {listing.status === "sold" ? (
+                                <button
+                                  onClick={() => handleClaimSoldListing(listing.id, listing.price)}
+                                  className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-white font-extrabold rounded text-[8px] uppercase transition cursor-pointer animate-pulse"
+                                >
+                                  {language === "vi" ? "NHẬN XU" : "CLAIM COINS"}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleCancelListing(listing)}
+                                  className="px-2 py-1 bg-slate-400 hover:bg-slate-300 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
+                                >
+                                  {language === "vi" ? "Hủy" : "Cancel"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Items for Sale by Other Players */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block font-mono">
+                      🛍️ Gian hàng công cộng ({marketplaceListings.filter(l => l.seller !== "player").length})
+                    </span>
+                    {marketplaceListings.filter(l => l.seller !== "player" && l.status === "listed").length === 0 ? (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center text-[10px] text-slate-400 font-mono">
+                        {language === "vi" ? "Chợ hiện đang trống. Hãy quay lại sau!" : "Market is currently quiet. Check back later!"}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {marketplaceListings.filter(l => l.seller !== "player" && l.status === "listed").map((listing) => {
+                          let rarityColor = "border-slate-300 bg-slate-50 text-slate-700";
+                          if (listing.item.rarity === "rare") rarityColor = "border-emerald-300 bg-emerald-50/30 text-emerald-800";
+                          if (listing.item.rarity === "epic") rarityColor = "border-blue-300 bg-blue-50/30 text-blue-800";
+                          if (listing.item.rarity === "legendary") rarityColor = "border-amber-300 bg-amber-50/30 text-amber-800 animate-pulse";
+
+                          let statDesc = "";
+                          if (listing.item.statType === "damage") statDesc = `+${listing.item.value}% Sát thương`;
+                          if (listing.item.statType === "health") statDesc = `+${listing.item.value} HP`;
+                          if (listing.item.statType === "regen") statDesc = `+${listing.item.value} HP hồi/s`;
+                          if (listing.item.statType === "speed") statDesc = `+${listing.item.value}% Tốc độ`;
+                          if (listing.item.statType === "magnet") statDesc = `+${listing.item.value} Tầm`;
+
+                          const canBuy = metaGold >= listing.price;
+
+                          return (
+                            <div key={listing.id} className={`flex items-center justify-between p-2 rounded-lg border ${rarityColor}`}>
+                              <div className="min-w-0 pr-2">
+                                <span className="text-[10px] font-bold block truncate uppercase">{listing.item.name}</span>
+                                <span className="text-[8px] font-mono block text-slate-500 leading-tight mt-0.5">
+                                  {listing.item.rarity.toUpperCase()} • {statDesc} • Bán bởi: {listing.seller}
+                                </span>
+                              </div>
+                              <button
+                                disabled={!canBuy}
+                                onClick={() => handleBuyListing(listing)}
+                                className={`px-2.5 py-1.5 font-bold rounded text-[8px] uppercase transition cursor-pointer shrink-0 flex items-center space-x-0.5 ${
+                                  canBuy
+                                    ? "bg-purple-600 hover:bg-purple-500 text-white font-extrabold"
+                                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                }`}
+                              >
+                                <span>💰</span>
+                                <span>{listing.price}xu</span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* High Scores list */}
@@ -4009,21 +4721,6 @@ export default function App() {
                   </span>
                   <span className="text-brand-accent font-mono text-sm font-bold">{finalStats.gold} ¢</span>
                 </div>
-
-                {finalStats.gold >= SESSION_GOLD_LIMIT && (
-                  <div className="text-[8.5px] leading-tight text-amber-600 font-mono text-center bg-amber-500/5 border border-amber-500/10 p-2 rounded-lg mt-2">
-                    {language === "vi"
-                      ? "⚠️ Đã chạm hạn mức xu tối đa nhận được trong một trận đấu!"
-                      : "⚠️ Match coin limit reached for this session!"}
-                  </div>
-                )}
-                {dailyGrindGold >= DAILY_GRIND_LIMIT && (
-                  <div className="text-[8.5px] leading-tight text-red-500 font-mono text-center bg-red-500/5 border border-red-500/10 p-2 rounded-lg mt-2">
-                    {language === "vi"
-                      ? "🚨 Đã chạm hạn mức cày xu tối đa hàng ngày (150 xu). Vui lòng quay lại vào ngày mai!"
-                      : "🚨 Daily grind limit reached (150 coins). Please return tomorrow!"}
-                  </div>
-                )}
               </div>
             </div>
 
