@@ -1676,7 +1676,7 @@ export default function App() {
 
         if (data.simulated) {
           setPiPaymentStatus("success");
-          setPiPaymentError(t("simulateNoWalletSeed", { amount: piAmount }));
+          setPiPaymentError(data.message || t("simulateNoWalletSeed", { amount: piAmount }));
         } else {
           setPiPaymentStatus("success");
           setPiPaymentError(`${piAmount} π`);

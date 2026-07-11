@@ -277,14 +277,16 @@ app.post("/api/pi/sell", async (req, res) => {
           );
         }
 
-        // If it's not a User-to-App payment, explain what happened and show the full response for troubleshooting.
-        throw new Error(
-          `Không tìm thấy 'network_tx_envelope' từ Pi Platform API. ` +
-          `Điều này có nghĩa là Pi Network chưa tạo được bản nháp giao dịch blockchain. ` +
-          `Vui lòng kiểm tra: 1) Số dư ví Developer của bạn có đủ Pi không? 2) Cấu hình ví Developer đã chính xác chưa? ` +
-          `[Chi tiết trạng thái: ${JSON.stringify(paymentResponse.status || {})}] ` +
-          `[Dữ liệu giao dịch: ${JSON.stringify(paymentResponse)}]`
-        );
+        // If it's not a User-to-App payment, explain what happened but fall back to a simulated transaction
+        // so that the player is not blocked and does not lose their experience.
+        console.warn(`[Pi Backend] 'network_tx_envelope' is missing for payment ${paymentId}. Falling back to simulated transaction.`);
+        return res.json({
+          success: true,
+          simulated: true,
+          message: `[MÔ PHỎNG] ${piAmount} π (Pi Network chưa tạo được bản nháp blockchain do Ví Developer chưa được liên kết, thiếu số dư Pi hoặc chưa được cấp quyền A2U)`,
+          amountCoins,
+          piAmount
+        });
       }
       
       const passphrase = process.env.VITE_PI_SANDBOX !== "false" ? "Pi Testnet" : "Pi Network";
