@@ -147,6 +147,27 @@ app.post("/api/pi/sell", async (req, res) => {
 
     console.log(`[Pi Backend] Process sell request: Pioneer @${username || uid} wants to sell ${amountCoins} xu for ${piAmount} Pi`);
 
+    // Enforce withdrawal rate and flat 0.1 Pi fee:
+    // Rate: 20000 Coins = 1 Pi (Deposit is 10,000 Coins = 1 Pi)
+    // Withdrawal fee: 0.1 Pi
+    const rate = 20000;
+    const grossPi = Number((amountCoins / rate).toFixed(7));
+    const fee = 0.1;
+    const expectedNetPi = Number((grossPi - fee).toFixed(7));
+
+    // Ensure the net Pi is positive and matches the client's request
+    if (expectedNetPi <= 0) {
+      return res.status(400).json({ 
+        error: `Số xu rút quá ít. Tối thiểu là 4000 xu để nhận Pi dương sau khi trừ phí rút cố định 0.1 Pi.` 
+      });
+    }
+
+    if (Math.abs(Number(piAmount) - expectedNetPi) > 0.0001) {
+      return res.status(400).json({ 
+        error: `Số lượng Pi không khớp với tỷ giá: Yêu cầu ${amountCoins} xu ứng với thực nhận ${expectedNetPi} Pi (sau khi trừ phí rút cố định 0.1 Pi).` 
+      });
+    }
+
     // Verify if API Key is configured
     const apiKey = process.env.PI_API_KEY;
     if (!apiKey) {

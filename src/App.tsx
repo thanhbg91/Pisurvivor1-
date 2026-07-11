@@ -234,7 +234,7 @@ export default function App() {
   // Ad simulation overlays
   const [adState, setAdState] = useState<{
     visible: boolean;
-    type: "REROLL" | "REVIVE" | "DOUBLE_GOLD" | null;
+    type: "REROLL" | "REVIVE" | "DOUBLE_GOLD" | "DAILY_CHECKIN" | null;
     timer: number;
     title: string;
   }>({
@@ -266,6 +266,10 @@ export default function App() {
   });
   const [piApiKeyConfigured, setPiApiKeyConfigured] = useState<boolean | null>(null);
   const [shopTab, setShopTab] = useState<"upgrades" | "exchange" | "history">("upgrades");
+  const [hasCheckedInToday, setHasCheckedInToday] = useState(() => {
+    const lastCheckin = localStorage.getItem("pioneer_last_checkin");
+    return lastCheckin === new Date().toDateString();
+  });
 
   const [transactions, setTransactions] = useState<PiTransaction[]>(() => {
     if (typeof window !== "undefined") {
@@ -927,7 +931,7 @@ export default function App() {
   // AD MONETIZATION INTEGRATIONS (MOCK)
   // ==========================================
   const triggerAdFlow = (
-    type: "REROLL" | "REVIVE" | "DOUBLE_GOLD",
+    type: "REROLL" | "REVIVE" | "DOUBLE_GOLD" | "DAILY_CHECKIN",
     title: string,
     onReward: () => void
   ) => {
@@ -1057,6 +1061,31 @@ export default function App() {
         };
       });
       playSfx("levelup");
+    });
+  };
+
+  const handleDailyCheckIn = () => {
+    if (hasCheckedInToday) return;
+
+    triggerAdFlow("DAILY_CHECKIN", language === "vi" ? "Đang phát sóng quảng cáo điểm danh..." : "Loading check-in broadcast...", () => {
+      setMetaGold((prev: number) => {
+        const next = prev + 10;
+        localStorage.setItem("pioneer_meta_gold", String(next));
+        return next;
+      });
+      localStorage.setItem("pioneer_last_checkin", new Date().toDateString());
+      setHasCheckedInToday(true);
+      playSfx("upgrade");
+      
+      logTransaction({
+        id: `checkin-${Date.now()}`,
+        type: "deposit",
+        amountCoins: 10,
+        piAmount: 0,
+        status: "success",
+        timestamp: Date.now(),
+        memo: language === "vi" ? "Điểm danh hàng ngày (+10 xu)" : "Daily Check-in (+10 coins)"
+      });
     });
   };
 
@@ -3021,6 +3050,37 @@ export default function App() {
                 )}
               </div>
 
+              {/* Daily Check-in Button */}
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-xl p-2.5 flex items-center justify-between mb-3 shadow-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="bg-amber-500 text-white p-1 rounded-lg animate-bounce">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-bold font-display uppercase tracking-wide text-amber-900 leading-tight">
+                      {language === "vi" ? "Điểm Danh Hàng Ngày" : "Daily Check-in"}
+                    </h4>
+                    <p className="text-[9px] text-amber-700 font-sans leading-tight mt-0.5">
+                      {language === "vi" ? "Xem quảng cáo nhận ngay +10 xu vàng!" : "Watch a short ad to receive +10 gold coins!"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDailyCheckIn}
+                  disabled={hasCheckedInToday}
+                  className={`px-3 py-1.5 font-display font-bold uppercase tracking-wider text-[9px] border-2 rounded-lg transition shadow-sm cursor-pointer min-w-[100px] text-center ${
+                    hasCheckedInToday
+                      ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                      : "bg-amber-500 hover:bg-amber-400 text-white border-amber-600 hover:border-amber-500 animate-pulse"
+                  }`}
+                >
+                  {hasCheckedInToday 
+                    ? (language === "vi" ? "Đã Điểm Danh" : "Checked In") 
+                    : (language === "vi" ? "Nhận 10 Xu" : "Get 10¢")}
+                </button>
+              </div>
+
               {/* Tab Selector */}
               <div className="flex border-b border-brand-border mb-3 text-xs bg-slate-50 p-1 rounded-lg space-x-1">
                 <button
@@ -3170,10 +3230,10 @@ export default function App() {
                     {piUser ? (
                       <div className="grid grid-cols-2 gap-1.5">
                         {[
-                          { coins: 500, pi: 0.025 },
-                          { coins: 1000, pi: 0.05 },
-                          { coins: 2000, pi: 0.10 },
-                          { coins: 5000, pi: 0.25 }
+                          { coins: 4000, pi: 0.10 },
+                          { coins: 6000, pi: 0.20 },
+                          { coins: 10000, pi: 0.40 },
+                          { coins: 20000, pi: 0.90 }
                         ].map((pkg) => {
                           const disabled = metaGold < pkg.coins;
                           return (
@@ -3187,7 +3247,10 @@ export default function App() {
                                   : "border-amber-200 hover:border-amber-500 bg-white hover:bg-amber-50/20"
                               }`}
                             >
-                              <span className="text-[10px] font-mono font-bold text-slate-800">-{pkg.coins} {language === "vi" ? "Xu" : "Coins"}</span>
+                              <div className="flex justify-between w-full">
+                                <span className="text-[10px] font-mono font-bold text-slate-800">-{pkg.coins} {language === "vi" ? "Xu" : "Coins"}</span>
+                                <span className="text-[7px] text-slate-400 font-mono mt-0.5">({language === "vi" ? "Phí 0.1π" : "0.1π fee"})</span>
+                              </div>
                               <span className="text-[8px] font-bold font-mono text-amber-600 mt-0.5">+{pkg.pi} π</span>
                             </button>
                           );
