@@ -380,6 +380,8 @@ export default function App() {
 
   const [isRefreshingMarketplace, setIsRefreshingMarketplace] = useState(false);
   const [selectedRarityFilter, setSelectedRarityFilter] = useState<string>("all");
+  const [itemBeingListedId, setItemBeingListedId] = useState<string | null>(null);
+  const [customPriceInput, setCustomPriceInput] = useState<string>("");
 
   // Ad simulation overlays
   const [adState, setAdState] = useState<{
@@ -687,6 +689,40 @@ export default function App() {
         return prev;
       });
     }, 15000 + Math.random() * 20000);
+  };
+
+  const getBuybackPrice = (rarity: string) => {
+    if (rarity === "rare") return 150;
+    if (rarity === "epic") return 200;
+    if (rarity === "legendary") return 250;
+    return 100; // common
+  };
+
+  const handleBuybackItem = (item: any) => {
+    const isWpnEquipped = equippedWeapon?.id === item.id;
+    const isArmEquipped = equippedArmor?.id === item.id;
+    const isAccEquipped = equippedAccessory?.id === item.id;
+
+    if (isWpnEquipped || isArmEquipped || isAccEquipped) {
+      alert(language === "vi" ? "Vui lòng tháo trang bị trước khi bán cho hệ thống!" : "Please unequip before selling to system!");
+      return;
+    }
+
+    const price = getBuybackPrice(item.rarity);
+
+    setInventory((prev) => {
+      const next = prev.filter((i) => i.id !== item.id);
+      localStorage.setItem("pioneer_inventory", JSON.stringify(next));
+      return next;
+    });
+
+    setMetaGold((prev) => {
+      const next = prev + price;
+      localStorage.setItem("pioneer_meta_gold", String(next));
+      return next;
+    });
+
+    playSfx("upgrade");
   };
 
   const handleClaimSoldListing = (listingId: string, goldPrice: number) => {
@@ -4053,18 +4089,70 @@ export default function App() {
                                 </span>
                               </div>
                               <div className="flex items-center space-x-1 shrink-0">
-                                <button
-                                  onClick={() => handleEquipItem(item)}
-                                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
-                                >
-                                  {language === "vi" ? "Mặc" : "Equip"}
-                                </button>
-                                <button
-                                  onClick={() => handlePostListing(item, Math.floor(item.sellPrice * 1.5))}
-                                  className="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
-                                >
-                                  {language === "vi" ? "Bán chợ" : "List Bazaar"}
-                                </button>
+                                {itemBeingListedId === item.id ? (
+                                  <div className="flex items-center space-x-1 shrink-0 bg-purple-50 p-1 rounded border border-purple-200">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={customPriceInput}
+                                      onChange={(e) => setCustomPriceInput(e.target.value)}
+                                      className="w-12 px-1 py-0.5 text-[9px] border border-purple-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white font-mono text-center text-slate-800"
+                                      placeholder="Giá..."
+                                      autoFocus
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const parsedPrice = parseInt(customPriceInput, 10);
+                                        if (isNaN(parsedPrice) || parsedPrice <= 0) {
+                                          alert(language === "vi" ? "Vui lòng nhập giá bán lớn hơn 0!" : "Please enter a price greater than 0!");
+                                          return;
+                                        }
+                                        handlePostListing(item, parsedPrice);
+                                        setItemBeingListedId(null);
+                                        setCustomPriceInput("");
+                                      }}
+                                      className="px-1.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
+                                    >
+                                      {language === "vi" ? "Đăng" : "Post"}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setItemBeingListedId(null);
+                                        setCustomPriceInput("");
+                                        playSfx("hurt");
+                                      }}
+                                      className="px-1 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded text-[8px] uppercase transition cursor-pointer"
+                                    >
+                                      ❌
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleEquipItem(item)}
+                                      className="px-1.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
+                                    >
+                                      {language === "vi" ? "Mặc" : "Equip"}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setItemBeingListedId(item.id);
+                                        setCustomPriceInput(String(Math.floor(item.sellPrice * 1.5)));
+                                        playSfx("xp");
+                                      }}
+                                      className="px-1.5 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded text-[8px] uppercase transition cursor-pointer"
+                                    >
+                                      {language === "vi" ? "Bán chợ" : "List Bazaar"}
+                                    </button>
+                                    <button
+                                      onClick={() => handleBuybackItem(item)}
+                                      className="px-1.5 py-1 bg-amber-500 hover:bg-amber-450 border border-amber-600 text-amber-950 font-bold rounded text-[8px] uppercase transition cursor-pointer shadow-sm"
+                                      title={language === "vi" ? `Bán lại cho hệ thống lấy ${getBuybackPrice(item.rarity)} xu` : `Sell back to system for ${getBuybackPrice(item.rarity)} coins`}
+                                    >
+                                      💰 {getBuybackPrice(item.rarity)}
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           );
