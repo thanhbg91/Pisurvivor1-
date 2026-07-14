@@ -3,7 +3,7 @@ import { Language, TranslationSet, translations, languages } from "./translation
 import {
   Play, Flame, Shield, Activity, Sparkles, RotateCcw, Heart, Zap,
   Volume2, VolumeX, Trophy, Coins, Skull, Star, HelpCircle, ArrowRight,
-  History, FileText, Lock
+  History, FileText, Lock, RefreshCw
 } from "lucide-react";
 
 // ==========================================
@@ -338,7 +338,8 @@ export default function App() {
         },
         price: 35,
         seller: "SpaceWalker_Pi",
-        sold: false
+        sold: false,
+        status: "listed"
       },
       {
         id: "list-2",
@@ -353,7 +354,8 @@ export default function App() {
         },
         price: 45,
         seller: "Pioneer_X",
-        sold: false
+        sold: false,
+        status: "listed"
       },
       {
         id: "list-3",
@@ -368,12 +370,16 @@ export default function App() {
         },
         price: 30,
         seller: "Antipi_Expert",
-        sold: false
+        sold: false,
+        status: "listed"
       }
     ];
     localStorage.setItem("pioneer_marketplace", JSON.stringify(simulatedListings));
     return simulatedListings;
   });
+
+  const [isRefreshingMarketplace, setIsRefreshingMarketplace] = useState(false);
+  const [selectedRarityFilter, setSelectedRarityFilter] = useState<string>("all");
 
   // Ad simulation overlays
   const [adState, setAdState] = useState<{
@@ -650,8 +656,9 @@ export default function App() {
       id: `list-${Date.now()}`,
       item,
       price: priceInput,
-      seller: piUser?.username || "You",
-      sold: false
+      seller: "player",
+      sold: false,
+      status: "listed"
     };
 
     setInventory((prev) => {
@@ -673,7 +680,7 @@ export default function App() {
       setMarketplaceListings((prev) => {
         const found = prev.find((l) => l.id === newListing.id);
         if (found && !found.sold) {
-          const updated = prev.map((l) => l.id === newListing.id ? { ...l, sold: true } : l);
+          const updated = prev.map((l) => l.id === newListing.id ? { ...l, sold: true, status: "sold" } : l);
           localStorage.setItem("pioneer_marketplace", JSON.stringify(updated));
           return updated;
         }
@@ -741,6 +748,51 @@ export default function App() {
     playSfx("upgrade");
   };
 
+  const handleRefreshMarketplace = () => {
+    if (isRefreshingMarketplace) return;
+    
+    setIsRefreshingMarketplace(true);
+    playSfx("upgrade");
+
+    setTimeout(() => {
+      // Retain player's active/sold listings
+      const playerListings = marketplaceListings.filter((l) => l.seller === "player");
+
+      // Generate 3-5 new public listings
+      const mockSellers = [
+        "SpaceWalker_Pi", "Pioneer_X", "Antipi_Expert", "PiKnight", 
+        "Genesis_Pioneer", "CyberPioneer", "Pi_Nebula", "Alpha_Miner", 
+        "CryptoSurvivor", "QuantumExplorer"
+      ];
+
+      const newPublicListings: any[] = [];
+      const numItems = 3 + Math.floor(Math.random() * 3); // 3 to 5 items
+
+      for (let i = 0; i < numItems; i++) {
+        const item = generateRandomEquipment();
+        // Determine a reasonable price factor based on rarity
+        const priceMultiplier = 1.0 + Math.random() * 0.5; // 100% to 150% of the sell price
+        const price = Math.floor(item.sellPrice * priceMultiplier);
+        const seller = mockSellers[Math.floor(Math.random() * mockSellers.length)];
+
+        newPublicListings.push({
+          id: `list-npc-${Date.now()}-${i}-${Math.random()}`,
+          item,
+          price,
+          seller,
+          sold: false,
+          status: "listed"
+        });
+      }
+
+      const mergedListings = [...playerListings, ...newPublicListings];
+      setMarketplaceListings(mergedListings);
+      localStorage.setItem("pioneer_marketplace", JSON.stringify(mergedListings));
+      
+      setIsRefreshingMarketplace(false);
+    }, 800);
+  };
+
   // Sync state setters to window globally so asynchronous callbacks from the Pi SDK
   // can target the mounted component instance correctly in React StrictMode/HMR double renders.
   useEffect(() => {
@@ -753,6 +805,37 @@ export default function App() {
       (window as any).__setPiApiKeyConfigured = setPiApiKeyConfigured;
     }
   });
+
+  // Migrate legacy marketplace listings on mount to support status & seller attributes correctly
+  useEffect(() => {
+    setMarketplaceListings((prev) => {
+      let changed = false;
+      const next = prev.map((l) => {
+        let updated = { ...l };
+        
+        // 1. If seller is "You" or matches username, treat it as "player"
+        const isPlayer = l.seller === "player" || l.seller === "You" || (piUser && l.seller === piUser.username);
+        if (isPlayer && l.seller !== "player") {
+          updated.seller = "player";
+          changed = true;
+        }
+
+        // 2. Ensure status exists and matches old sold state
+        if (updated.status === undefined) {
+          updated.status = updated.sold === true ? "sold" : "listed";
+          changed = true;
+        }
+
+        return updated;
+      });
+
+      if (changed) {
+        localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
+        return next;
+      }
+      return prev;
+    });
+  }, [piUser]);
 
   // ==========================================
   // REFS FOR CANVAS & GAME STATE ENGINE
@@ -3629,11 +3712,11 @@ export default function App() {
                 /* Individual Shop Upgrade Slots */
                 <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
                   {[
-                    { key: "damage", label: t("plasmaAccelerators"), icon: <Zap className="w-3.5 h-3.5" />, cost: (shopUpgrades.damage + 1) * 2000, desc: t("plasmaAcceleratorsDesc") },
-                    { key: "health", label: t("nanoshieldArmor"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.health + 1) * 1500, desc: t("nanoshieldArmorDesc") },
-                    { key: "speed", label: t("reactorThrusters"), icon: <Activity className="w-3.5 h-3.5" />, cost: (shopUpgrades.speed + 1) * 2000, desc: t("reactorThrustersDesc") },
-                    { key: "magnet", label: t("quantumHarvester"), icon: <Sparkles className="w-3.5 h-3.5" />, cost: (shopUpgrades.magnet + 1) * 1500, desc: t("quantumHarvesterDesc") },
-                    { key: "regen", label: t("naniteRepairSystems"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.regen + 1) * 2500, desc: t("naniteRepairSystemsDesc") },
+                    { key: "damage", label: t("plasmaAccelerators"), icon: <Zap className="w-3.5 h-3.5" />, cost: (shopUpgrades.damage + 1) * 200000, desc: t("plasmaAcceleratorsDesc") },
+                    { key: "health", label: t("nanoshieldArmor"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.health + 1) * 150000, desc: t("nanoshieldArmorDesc") },
+                    { key: "speed", label: t("reactorThrusters"), icon: <Activity className="w-3.5 h-3.5" />, cost: (shopUpgrades.speed + 1) * 200000, desc: t("reactorThrustersDesc") },
+                    { key: "magnet", label: t("quantumHarvester"), icon: <Sparkles className="w-3.5 h-3.5" />, cost: (shopUpgrades.magnet + 1) * 150000, desc: t("quantumHarvesterDesc") },
+                    { key: "regen", label: t("naniteRepairSystems"), icon: <Heart className="w-3.5 h-3.5" />, cost: (shopUpgrades.regen + 1) * 250000, desc: t("naniteRepairSystemsDesc") },
                   ].map((item) => {
                     const currentLvl = (shopUpgrades as any)[item.key];
                     const maxed = currentLvl >= 5;
@@ -3687,7 +3770,7 @@ export default function App() {
                           ) : (
                             <>
                               <span className="text-[8px] opacity-80 uppercase leading-none">{t("upgradeLabel")}</span>
-                              <span className="font-bold mt-0.5">{item.cost}¢</span>
+                              <span className="font-bold mt-0.5">{item.cost.toLocaleString()}¢</span>
                             </>
                           )}
                         </button>
@@ -3995,9 +4078,23 @@ export default function App() {
                 <div className="space-y-3.5 max-h-[190px] overflow-y-auto pr-1">
                   {/* General Marketplace HUD */}
                   <div className="p-2 bg-indigo-50 rounded-lg border border-indigo-200 text-slate-800 space-y-1">
-                    <span className="text-[11px] font-extrabold font-display uppercase tracking-wide text-indigo-800 block">
-                      🛒 Chợ Giao Thương Pioneer Bazaar
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold font-display uppercase tracking-wide text-indigo-800">
+                        🛒 Chợ Giao Thương Pioneer Bazaar
+                      </span>
+                      <button
+                        onClick={handleRefreshMarketplace}
+                        disabled={isRefreshingMarketplace}
+                        className={`px-2 py-0.5 rounded text-[8px] font-bold font-mono transition flex items-center space-x-1 uppercase cursor-pointer shrink-0 ${
+                          isRefreshingMarketplace
+                            ? "bg-indigo-200 text-indigo-500 cursor-not-allowed"
+                            : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm"
+                        }`}
+                      >
+                        <RefreshCw className={`w-2.5 h-2.5 ${isRefreshingMarketplace ? "animate-spin" : ""}`} />
+                        <span>{isRefreshingMarketplace ? (language === "vi" ? "Đang tải..." : "Loading...") : (language === "vi" ? "Làm mới" : "Refresh")}</span>
+                      </button>
+                    </div>
                     <p className="text-[9px] text-indigo-600 font-sans leading-tight">
                       {language === "vi"
                         ? "Đăng bán các trang bị của bạn lấy xu vàng hoặc mua các vũ khí huyền thoại từ người chơi khác!"
@@ -4050,53 +4147,107 @@ export default function App() {
                   {/* Items for Sale by Other Players */}
                   <div className="space-y-1.5">
                     <span className="text-[9px] font-bold font-display uppercase tracking-wider text-slate-500 block font-mono">
-                      🛍️ Gian hàng công cộng ({marketplaceListings.filter(l => l.seller !== "player").length})
+                      🛍️ Gian hàng công cộng ({marketplaceListings.filter(l => l.seller !== "player" && l.status === "listed").length})
                     </span>
+
+                    {/* Rarity Filter Buttons */}
+                    <div className="flex items-center space-x-1 overflow-x-auto py-1 scrollbar-none">
+                      {[
+                        { id: "all", labelVi: "Tất cả", labelEn: "All" },
+                        { id: "common", labelVi: "Thường", labelEn: "Common" },
+                        { id: "rare", labelVi: "Hiếm", labelEn: "Rare" },
+                        { id: "epic", labelVi: "Sử thi", labelEn: "Epic" },
+                        { id: "legendary", labelVi: "Huyền thoại", labelEn: "Legendary" }
+                      ].map((f) => {
+                        const isActive = selectedRarityFilter === f.id;
+                        const label = language === "vi" ? f.labelVi : f.labelEn;
+                        
+                        let activeColor = "bg-indigo-600 border-indigo-600 text-white shadow-sm";
+                        if (f.id === "common" && isActive) activeColor = "bg-slate-600 border-slate-600 text-white shadow-sm";
+                        if (f.id === "rare" && isActive) activeColor = "bg-emerald-600 border-emerald-600 text-white shadow-sm";
+                        if (f.id === "epic" && isActive) activeColor = "bg-blue-600 border-blue-600 text-white shadow-sm";
+                        if (f.id === "legendary" && isActive) activeColor = "bg-amber-500 border-amber-500 text-white shadow-sm animate-pulse";
+
+                        return (
+                          <button
+                            key={f.id}
+                            onClick={() => {
+                              setSelectedRarityFilter(f.id);
+                              playSfx("xp");
+                            }}
+                            className={`px-2 py-0.5 rounded-full text-[8px] font-bold font-mono transition border cursor-pointer shrink-0 ${
+                              isActive
+                                ? activeColor
+                                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     {marketplaceListings.filter(l => l.seller !== "player" && l.status === "listed").length === 0 ? (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center text-[10px] text-slate-400 font-mono">
                         {language === "vi" ? "Chợ hiện đang trống. Hãy quay lại sau!" : "Market is currently quiet. Check back later!"}
                       </div>
                     ) : (
-                      <div className="space-y-1.5">
-                        {marketplaceListings.filter(l => l.seller !== "player" && l.status === "listed").map((listing) => {
-                          let rarityColor = "border-slate-300 bg-slate-50 text-slate-700";
-                          if (listing.item.rarity === "rare") rarityColor = "border-emerald-300 bg-emerald-50/30 text-emerald-800";
-                          if (listing.item.rarity === "epic") rarityColor = "border-blue-300 bg-blue-50/30 text-blue-800";
-                          if (listing.item.rarity === "legendary") rarityColor = "border-amber-300 bg-amber-50/30 text-amber-800 animate-pulse";
-
-                          let statDesc = "";
-                          if (listing.item.statType === "damage") statDesc = `+${listing.item.value}% Sát thương`;
-                          if (listing.item.statType === "health") statDesc = `+${listing.item.value} HP`;
-                          if (listing.item.statType === "regen") statDesc = `+${listing.item.value} HP hồi/s`;
-                          if (listing.item.statType === "speed") statDesc = `+${listing.item.value}% Tốc độ`;
-                          if (listing.item.statType === "magnet") statDesc = `+${listing.item.value} Tầm`;
-
-                          const canBuy = metaGold >= listing.price;
-
+                      (() => {
+                        const filtered = marketplaceListings.filter(
+                          l => l.seller !== "player" && l.status === "listed" && (selectedRarityFilter === "all" || l.item.rarity === selectedRarityFilter)
+                        );
+                        
+                        if (filtered.length === 0) {
                           return (
-                            <div key={listing.id} className={`flex items-center justify-between p-2 rounded-lg border ${rarityColor}`}>
-                              <div className="min-w-0 pr-2">
-                                <span className="text-[10px] font-bold block truncate uppercase">{listing.item.name}</span>
-                                <span className="text-[8px] font-mono block text-slate-500 leading-tight mt-0.5">
-                                  {listing.item.rarity.toUpperCase()} • {statDesc} • Bán bởi: {listing.seller}
-                                </span>
-                              </div>
-                              <button
-                                disabled={!canBuy}
-                                onClick={() => handleBuyListing(listing)}
-                                className={`px-2.5 py-1.5 font-bold rounded text-[8px] uppercase transition cursor-pointer shrink-0 flex items-center space-x-0.5 ${
-                                  canBuy
-                                    ? "bg-purple-600 hover:bg-purple-500 text-white font-extrabold"
-                                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                                }`}
-                              >
-                                <span>💰</span>
-                                <span>{listing.price}xu</span>
-                              </button>
+                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center text-[9px] text-slate-400 font-mono">
+                              {language === "vi" ? "Không có trang bị nào thuộc phẩm chất này." : "No gear of this rarity found."}
                             </div>
                           );
-                        })}
-                      </div>
+                        }
+
+                        return (
+                          <div className="space-y-1.5">
+                            {filtered.map((listing) => {
+                              let rarityColor = "border-slate-300 bg-slate-50 text-slate-700";
+                              if (listing.item.rarity === "rare") rarityColor = "border-emerald-300 bg-emerald-50/30 text-emerald-800";
+                              if (listing.item.rarity === "epic") rarityColor = "border-blue-300 bg-blue-50/30 text-blue-800";
+                              if (listing.item.rarity === "legendary") rarityColor = "border-amber-300 bg-amber-50/30 text-amber-800 animate-pulse";
+
+                              let statDesc = "";
+                              if (listing.item.statType === "damage") statDesc = language === "vi" ? `+${listing.item.value}% Sát thương` : `+${listing.item.value}% Damage`;
+                              if (listing.item.statType === "health") statDesc = `+${listing.item.value} HP`;
+                              if (listing.item.statType === "regen") statDesc = language === "vi" ? `+${listing.item.value} HP hồi/s` : `+${listing.item.value} HP regen/s`;
+                              if (listing.item.statType === "speed") statDesc = language === "vi" ? `+${listing.item.value}% Tốc độ` : `+${listing.item.value}% Speed`;
+                              if (listing.item.statType === "magnet") statDesc = language === "vi" ? `+${listing.item.value} Tầm nhặt` : `+${listing.item.value} Magnet range`;
+
+                              const canBuy = metaGold >= listing.price;
+
+                              return (
+                                <div key={listing.id} className={`flex items-center justify-between p-2 rounded-lg border ${rarityColor}`}>
+                                  <div className="min-w-0 pr-2">
+                                    <span className="text-[10px] font-bold block truncate uppercase">{listing.item.name}</span>
+                                    <span className="text-[8px] font-mono block text-slate-500 leading-tight mt-0.5">
+                                      {listing.item.rarity.toUpperCase()} • {statDesc} • {language === "vi" ? `Bán bởi: ${listing.seller}` : `Sold by: ${listing.seller}`}
+                                    </span>
+                                  </div>
+                                  <button
+                                    disabled={!canBuy}
+                                    onClick={() => handleBuyListing(listing)}
+                                    className={`px-2.5 py-1.5 font-bold rounded text-[8px] uppercase transition cursor-pointer shrink-0 flex items-center space-x-0.5 ${
+                                      canBuy
+                                        ? "bg-purple-600 hover:bg-purple-500 text-white font-extrabold"
+                                        : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                    }`}
+                                  >
+                                    <span>💰</span>
+                                    <span>{listing.price}xu</span>
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()
                     )}
                   </div>
                 </div>
