@@ -5,6 +5,8 @@ import {
   Volume2, VolumeX, Trophy, Coins, Skull, Star, HelpCircle, ArrowRight,
   History, FileText, Lock, RefreshCw
 } from "lucide-react";
+import { db } from "./firebase";
+import { collection, onSnapshot, doc, updateDoc, setDoc, deleteDoc } from "firebase/firestore";
 
 // ==========================================
 // GAME CONSTANTS & INTERFACES
@@ -314,8 +316,18 @@ export default function App() {
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [openedReward, setOpenedReward] = useState<{ coins: number; item: any | null } | null>(null);
 
-  const [marketplaceListings, setMarketplaceListings] = useState<any[]>(() => {
-    const saved = localStorage.getItem("pioneer_marketplace");
+  const [playerId] = useState<string>(() => {
+    const saved = localStorage.getItem("pioneer_player_id");
+    if (saved) return saved;
+    const newId = `player-${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem("pioneer_player_id", newId);
+    return newId;
+  });
+
+  const [cloudListings, setCloudListings] = useState<any[]>([]);
+
+  const [npcListings, setNpcListings] = useState<any[]>(() => {
+    const saved = localStorage.getItem("pioneer_npc_listings");
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -323,10 +335,9 @@ export default function App() {
         return [];
       }
     }
-    // Generate simulated active listings from other players
-    const simulatedListings = [
+    const initialNpcs = [
       {
-        id: "list-1",
+        id: "list-npc-1",
         item: {
           id: "item-npc-1",
           name: "Kiếm Quang Tinh Thể",
@@ -342,7 +353,7 @@ export default function App() {
         status: "listed"
       },
       {
-        id: "list-2",
+        id: "list-npc-2",
         item: {
           id: "item-npc-2",
           name: "Khiên Năng Lượng Đa Lớp",
@@ -358,7 +369,7 @@ export default function App() {
         status: "listed"
       },
       {
-        id: "list-3",
+        id: "list-npc-3",
         item: {
           id: "item-npc-3",
           name: "Vòng Tay Động Lực",
@@ -374,8 +385,8 @@ export default function App() {
         status: "listed"
       }
     ];
-    localStorage.setItem("pioneer_marketplace", JSON.stringify(simulatedListings));
-    return simulatedListings;
+    localStorage.setItem("pioneer_npc_listings", JSON.stringify(initialNpcs));
+    return initialNpcs;
   });
 
   const [isRefreshingMarketplace, setIsRefreshingMarketplace] = useState(false);
@@ -422,6 +433,16 @@ export default function App() {
     const lastCheckin = localStorage.getItem("pioneer_last_checkin");
     return lastCheckin === new Date().toDateString();
   });
+
+  const playerName = piUser?.username || `Pioneer_${playerId.substring(7, 12)}`;
+
+  const marketplaceListings = [
+    ...cloudListings.filter((l) => l.status !== "claimed").map((l) => ({
+      ...l,
+      seller: l.sellerId === playerId ? "player" : (l.sellerName || l.seller || "Pioneer")
+    })),
+    ...npcListings
+  ];
 
   const [transactions, setTransactions] = useState<PiTransaction[]>(() => {
     if (typeof window !== "undefined") {
@@ -639,7 +660,7 @@ export default function App() {
     playSfx("hurt");
   };
 
-  const handlePostListing = (item: any, priceInput: number) => {
+  const handlePostListing = async (item: any, priceInput: number) => {
     const isWpnEquipped = equippedWeapon?.id === item.id;
     const isArmEquipped = equippedArmor?.id === item.id;
     const isAccEquipped = equippedAccessory?.id === item.id;
@@ -654,12 +675,13 @@ export default function App() {
       return;
     }
 
+    const listId = `list-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newListing = {
-      id: `list-${Date.now()}`,
+      id: listId,
       item,
       price: priceInput,
-      seller: "player",
-      sold: false,
+      sellerId: playerId,
+      sellerName: playerName,
       status: "listed"
     };
 
@@ -669,11 +691,11 @@ export default function App() {
       return next;
     });
 
-    setMarketplaceListings((prev) => {
-      const next = [newListing, ...prev];
-      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
-      return next;
-    });
+    try {
+      await setDoc(doc(db, "pioneer_marketplace", listId), newListing);
+    } catch (e) {
+      console.error("Failed to post listing to Firestore:", e);
+    }
 
     playSfx("upgrade");
   };
@@ -712,44 +734,69 @@ export default function App() {
     playSfx("upgrade");
   };
 
-  const handleClaimSoldListing = (listingId: string, goldPrice: number) => {
+  const handleClaimSoldListing = async (listingId: string, goldPrice: number) => {
     setMetaGold((prev) => {
       const next = prev + goldPrice;
       localStorage.setItem("pioneer_meta_gold", String(next));
       return next;
     });
 
-    setMarketplaceListings((prev) => {
-      const next = prev.filter((l) => l.id !== listingId);
-      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
-      return next;
-    });
+    try {
+      await deleteDoc(doc(db, "pioneer_marketplace", listingId));
+    } catch (e) {
+      console.error("Failed to claim sold listing from Firestore:", e);
+    }
 
     playSfx("upgrade");
   };
 
-  const handleCancelListing = (listing: any) => {
+  const handleCancelListing = async (listing: any) => {
     setInventory((prev) => {
       const next = [...prev, listing.item];
       localStorage.setItem("pioneer_inventory", JSON.stringify(next));
       return next;
     });
 
-    setMarketplaceListings((prev) => {
-      const next = prev.filter((l) => l.id !== listing.id);
-      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
-      return next;
-    });
+    try {
+      await deleteDoc(doc(db, "pioneer_marketplace", listing.id));
+    } catch (e) {
+      console.error("Failed to cancel listing from Firestore:", e);
+    }
 
     playSfx("hurt");
   };
 
-  const handleBuyListing = (listing: any) => {
+  const handleBuyListing = async (listing: any) => {
     if (metaGold < listing.price) {
       alert(language === "vi" ? "Không đủ xu vàng!" : "Not enough gold coins!");
       return;
     }
 
+    if (listing.id.startsWith("list-npc") || !listing.sellerId) {
+      // NPC listing
+      setMetaGold((prev) => {
+        const next = prev - listing.price;
+        localStorage.setItem("pioneer_meta_gold", String(next));
+        return next;
+      });
+
+      setInventory((prev) => {
+        const next = [...prev, listing.item];
+        localStorage.setItem("pioneer_inventory", JSON.stringify(next));
+        return next;
+      });
+
+      setNpcListings((prev) => {
+        const next = prev.filter((l) => l.id !== listing.id);
+        localStorage.setItem("pioneer_npc_listings", JSON.stringify(next));
+        return next;
+      });
+
+      playSfx("upgrade");
+      return;
+    }
+
+    // Real player listing
     setMetaGold((prev) => {
       const next = prev - listing.price;
       localStorage.setItem("pioneer_meta_gold", String(next));
@@ -762,11 +809,15 @@ export default function App() {
       return next;
     });
 
-    setMarketplaceListings((prev) => {
-      const next = prev.filter((l) => l.id !== listing.id);
-      localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
-      return next;
-    });
+    try {
+      await updateDoc(doc(db, "pioneer_marketplace", listing.id), {
+        status: "sold",
+        buyerId: playerId,
+        buyerName: playerName
+      });
+    } catch (e) {
+      console.error("Failed to buy listing in Firestore:", e);
+    }
 
     playSfx("upgrade");
   };
@@ -778,10 +829,7 @@ export default function App() {
     playSfx("upgrade");
 
     setTimeout(() => {
-      // Retain player's active/sold listings
-      const playerListings = marketplaceListings.filter((l) => l.seller === "player");
-
-      // Generate 3-5 new public listings
+      // Generate 3-5 new public listings for NPCs
       const mockSellers = [
         "SpaceWalker_Pi", "Pioneer_X", "Antipi_Expert", "PiKnight", 
         "Genesis_Pioneer", "CyberPioneer", "Pi_Nebula", "Alpha_Miner", 
@@ -808,9 +856,8 @@ export default function App() {
         });
       }
 
-      const mergedListings = [...playerListings, ...newPublicListings];
-      setMarketplaceListings(mergedListings);
-      localStorage.setItem("pioneer_marketplace", JSON.stringify(mergedListings));
+      setNpcListings(newPublicListings);
+      localStorage.setItem("pioneer_npc_listings", JSON.stringify(newPublicListings));
       
       setIsRefreshingMarketplace(false);
     }, 800);
@@ -829,36 +876,20 @@ export default function App() {
     }
   });
 
-  // Migrate legacy marketplace listings on mount to support status & seller attributes correctly
+  // Real-time synchronization of decentralized marketplace listings with Firestore
   useEffect(() => {
-    setMarketplaceListings((prev) => {
-      let changed = false;
-      const next = prev.map((l) => {
-        let updated = { ...l };
-        
-        // 1. If seller is "You" or matches username, treat it as "player"
-        const isPlayer = l.seller === "player" || l.seller === "You" || (piUser && l.seller === piUser.username);
-        if (isPlayer && l.seller !== "player") {
-          updated.seller = "player";
-          changed = true;
-        }
-
-        // 2. Ensure status exists and matches old sold state
-        if (updated.status === undefined) {
-          updated.status = updated.sold === true ? "sold" : "listed";
-          changed = true;
-        }
-
-        return updated;
+    const colRef = collection(db, "pioneer_marketplace");
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const items: any[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() });
       });
-
-      if (changed) {
-        localStorage.setItem("pioneer_marketplace", JSON.stringify(next));
-        return next;
-      }
-      return prev;
+      setCloudListings(items);
+    }, (error) => {
+      console.error("Firestore listener error:", error);
     });
-  }, [piUser]);
+    return () => unsubscribe();
+  }, []);
 
   // ==========================================
   // REFS FOR CANVAS & GAME STATE ENGINE
