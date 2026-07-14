@@ -676,19 +676,6 @@ export default function App() {
     });
 
     playSfx("upgrade");
-
-    // Simulate NPC purchase after 15 to 30 seconds
-    setTimeout(() => {
-      setMarketplaceListings((prev) => {
-        const found = prev.find((l) => l.id === newListing.id);
-        if (found && !found.sold) {
-          const updated = prev.map((l) => l.id === newListing.id ? { ...l, sold: true, status: "sold" } : l);
-          localStorage.setItem("pioneer_marketplace", JSON.stringify(updated));
-          return updated;
-        }
-        return prev;
-      });
-    }, 15000 + Math.random() * 20000);
   };
 
   const getBuybackPrice = (rarity: string) => {
